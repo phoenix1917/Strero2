@@ -13,13 +13,36 @@ using namespace std;
 
 int main() {
     // 标定所用图像文件的路径
-    ifstream fin("calibdata1.txt");
+    ifstream fin("calibdata2.txt");
     // 保存标定结果的文件
     ofstream fout("caliberation_result.txt");
+
+    // 定义所使用的标定板
+    #define USING_BOARD_1
+
+#ifdef USING_BOARD_1
+    // 标定板1：9x7，35mm，白色边缘
+    // 标定版上棋盘格内角点的个数
+    Size boardSize(8, 6);
+    // 标定板上每个方格的大小
+    float squareSize = 35.0;
+#endif 
+
+#ifdef USING_BOARD_2
+    // 标定板2：12x9，30mm，黑色边缘
     // 标定版上棋盘格内角点的个数
     Size boardSize(11, 8);
     // 标定板上每个方格的大小
     float squareSize = 30.0;
+#endif 
+
+#ifdef USING_BOARD_3
+    // 标定板3：10x9，90mm，白色边缘
+    // 标定版上棋盘格内角点的个数
+    Size boardSize(9, 8);
+    // 标定板上每个方格的大小
+    float squareSize = 90.0;
+#endif 
 
     // 每行读入的图像路径
     string fileName;
@@ -46,8 +69,8 @@ int main() {
     vector<double> stdDevIntrinsics;
     // 外参数误差
     vector<vector<double> > stdDevExtrinsics;
+    // 每幅图像的重投影误差
     vector<double> perViewErrors;
-
 
     // 读取图像
     while(getline(fin, fileName)) {
@@ -70,12 +93,13 @@ int main() {
         // CV_CALIB_CB_NORMALIZE_IMAGE
         // CV_CALIB_CB_FILTER_QUADS
         // CALIB_CB_FAST_CHECK
-        foundAllCorners = findChessboardCorners(view, boardSize, cornerBuf);
+        foundAllCorners = findChessboardCorners(view, boardSize, cornerBuf, 
+                                                CV_CALIB_CB_NORMALIZE_IMAGE);
 
         // 绘制内角点。若检出全部角点，连线展示；若未检出，绘制检出的点
         drawChessboardCorners(view, boardSize, Mat(cornerBuf), foundAllCorners);
         imshow("corners", view);
-        waitKey(1000);
+        waitKey(500);
 
         if(foundAllCorners) {
             acceptedCount += 1;
@@ -87,22 +111,28 @@ int main() {
             // 绘制调整后的角点
             drawChessboardCorners(viewSubpix, boardSize, Mat(cornerBuf), true);
             imshow("corners", viewSubpix);
-            waitKey(1000);
+            waitKey(500);
         }
     }
+    
     // 输出提取结果统计
+    destroyWindow("corners");
     if(acceptedCount <= 3) {
         cout << "角点检测失败" << endl;
         system("pause");
         return 0;
     } else {
         cout << "使用 " << acceptedCount << " 幅图像进行标定：" << endl;
-        for(auto iter = acceptedImages.cbegin(); iter != acceptedImages.cend(); iter++) {
-            cout << (*iter);
-            if(iter != acceptedImages.cend()) {
+        fout << "使用 " << acceptedCount << " 幅图像进行标定：" << endl;
+        for(auto iter = acceptedImages.cbegin(); iter != acceptedImages.cend(); ++iter) {
+            cout << (*iter) + 1;
+            fout << (*iter) + 1;
+            if(*iter != (int)acceptedImages.size() - 1) {
                 cout << ", ";
+                fout << ", ";
             } else {
-                cout << endl;
+                cout << endl << endl;
+                fout << endl << endl;
             }
         }
     }
@@ -128,13 +158,20 @@ int main() {
     // CALIB_FIX_TAUX_TAUY
     double reprojectionError = calibrateCamera(objectPoints, allCorners, imageSize,
                                                cameraMatrix, distCoeffs, rVecs, tVecs,
-                                               stdDevIntrinsics, stdDevExtrinsics, perViewErrors, 
                                                0 | CV_CALIB_FIX_K4 | CV_CALIB_FIX_K5);
+
+    //double reprojectionError = calibrateCamera(objectPoints, allCorners, imageSize,
+    //                                           cameraMatrix, distCoeffs, rVecs, tVecs,
+    //                                           stdDevIntrinsics, stdDevExtrinsics, perViewErrors, 
+    //                                           0 | CV_CALIB_FIX_K4 | CV_CALIB_FIX_K5);
     
     // 输出标定结果
-    cout << "cameraMatrix = " << endl << " " << cameraMatrix << endl;
-    cout << "distCoeffs = " << endl << " " << distCoeffs << endl;
-    cout << "reprojectionError" << endl << " " << reprojectionError << endl;
+    cout << "cameraMatrix = " << endl << cameraMatrix << endl << endl;
+    fout << "cameraMatrix = " << endl << cameraMatrix << endl << endl;
+    cout << "distCoeffs = " << endl << distCoeffs << endl << endl;
+    fout << "distCoeffs = " << endl << distCoeffs << endl << endl;
+    cout << "reprojectionError" << endl << reprojectionError << endl << endl;
+    fout << "reprojectionError" << endl << reprojectionError << endl << endl;
 
     system("pause");
     return 0;
