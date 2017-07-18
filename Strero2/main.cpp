@@ -12,7 +12,7 @@ using namespace cv;
 using namespace std;
 
 int main() {
-    // 标定所用图像文件的路径
+    // 加载标定所用图像文件的路径
     ifstream finL("calibdata3_L.txt");
     ifstream finR("calibdata3_R.txt");
     // 保存标定结果的文件
@@ -23,6 +23,8 @@ int main() {
     #define USING_BOARD_1
     // 显示角点提取结果
     bool showCornerExt = false;
+    // 进行单目标定
+    bool doSingleCalib = false;
 
 #ifdef USING_BOARD_1
     // 标定板1：9x7，35mm，白色边缘
@@ -68,6 +70,8 @@ int main() {
     int acceptedCount = 0;
     // 找到全部角点的图像编号
     vector<int> acceptedImages;
+    // 每幅图像使用的标定板的角点的三维坐标
+    vector<vector<Point3f> > objectPoints(1);
     // 所有标定图像的角点
     vector<vector<Point2f> > allCornersL, allCornersR;
     // 内参数矩阵和畸变系数
@@ -75,16 +79,7 @@ int main() {
     Mat distCoeffsL = Mat::zeros(5, 1, CV_64F);
     Mat cameraMatrixR = Mat::eye(3, 3, CV_64F);
     Mat distCoeffsR = Mat::zeros(5, 1, CV_64F);
-    // 每幅图像的旋转矩阵和平移向量
-    vector<Mat> rVecsL, tVecsL, rVecsR, tVecsR;
-    // 每幅图像使用的标定板的角点的三维坐标
-    vector<vector<Point3f> > objectPoints(1);
-    // 内参数误差
-    Mat stdDevIntrinsicsL, stdDevIntrinsicsR;
-    // 外参数误差
-    Mat stdDevExtrinsicsL, stdDevExtrinsicsR;
-    // 每幅图像的重投影误差
-    vector<double> perViewErrorsL, perViewErrorsR;
+
 
     // 读取左目图像
     while(getline(finL, fileName)) {
@@ -196,15 +191,61 @@ int main() {
     cout << "cameraMatrix_L = " << endl << cameraMatrixL << endl << endl;
     cout << "cameraMatrix_R = " << endl << cameraMatrixR << endl << endl;
     foutL << "内参数预估：" << endl;
-    foutL << "cameraMatrix_L = " << endl << cameraMatrixL << endl << endl;
+    foutL << "cameraMatrix = " << endl << cameraMatrixL << endl << endl;
     foutR << "内参数预估：" << endl;
-    foutR << "cameraMatrix_R = " << endl << cameraMatrixR << endl << endl;
+    foutR << "cameraMatrix = " << endl << cameraMatrixR << endl << endl;
 
-    // 标定
+    if(doSingleCalib) {
+        // 每幅图像的旋转矩阵和平移向量
+        vector<Mat> rVecsL, tVecsL, rVecsR, tVecsR;
+        // 内参数误差
+        Mat stdDevIntrinsicsL, stdDevIntrinsicsR;
+        // 外参数误差
+        Mat stdDevExtrinsicsL, stdDevExtrinsicsR;
+        // 每幅图像的重投影误差
+        vector<double> perViewErrorsL, perViewErrorsR;
+
+        // 单目标定
+        // flags:
+        // CV_CALIB_USE_INTRINSIC_GUESS         使用预估的内参数矩阵
+        // CV_CALIB_FIX_PRINCIPAL_POINT         固定主点坐标
+        // CV_CALIB_FIX_ASPECT_RATIO            固定焦距比，只计算fy
+        // CV_CALIB_ZERO_TANGENT_DIST           不计算切向畸变(p1, p2)
+        // CV_CALIB_FIX_K1,...,CV_CALIB_FIX_K6  固定径向畸变K1-K6参数
+        // CV_CALIB_RATIONAL_MODEL              计算8参数畸变模型(K4-K6)，不写则计算5参数
+        // CALIB_THIN_PRISM_MODEL               计算S1-S4参数，不写则不计算
+        // CALIB_FIX_S1_S2_S3_S4                固定S1-S4参数值
+        // CALIB_TILTED_MODEL                   计算(tauX, tauY)参数，不写则不计算
+        // CALIB_FIX_TAUX_TAUY                  固定(tauX, tauY)参数值
+        double reprojectionErrorL = calibrateCamera(objectPoints, allCornersL, imageSize,
+                                                    cameraMatrixL, distCoeffsL, rVecsL, tVecsL,
+                                                    stdDevIntrinsicsL, stdDevExtrinsicsL, perViewErrorsL,
+                                                    CV_CALIB_USE_INTRINSIC_GUESS |
+                                                    CV_CALIB_FIX_PRINCIPAL_POINT);
+        double reprojectionErrorR = calibrateCamera(objectPoints, allCornersR, imageSize,
+                                                    cameraMatrixR, distCoeffsR, rVecsR, tVecsR,
+                                                    stdDevIntrinsicsR, stdDevExtrinsicsR, perViewErrorsR,
+                                                    CV_CALIB_USE_INTRINSIC_GUESS |
+                                                    CV_CALIB_FIX_PRINCIPAL_POINT);
+
+        // 输出标定结果
+        printCalibResults(cameraMatrixL, distCoeffsL, reprojectionErrorL, stdDevIntrinsicsL);
+        printCalibResults(cameraMatrixR, distCoeffsR, reprojectionErrorR, stdDevIntrinsicsR);
+        printCalibResults(cameraMatrixL, distCoeffsL, reprojectionErrorL, stdDevIntrinsicsL, stdDevExtrinsicsL, perViewErrorsL, foutL);
+        printCalibResults(cameraMatrixR, distCoeffsR, reprojectionErrorR, stdDevIntrinsicsR, stdDevExtrinsicsR, perViewErrorsR, foutR);
+    }
+    
+
+    Mat R, T, E, F;
+
+    // 立体标定
     // flags:
+    // CV_CALIB_FIX_INTRINSIC               固定内参数和畸变模型，只计算(R, T, E, F)
     // CV_CALIB_USE_INTRINSIC_GUESS         使用预估的内参数矩阵
     // CV_CALIB_FIX_PRINCIPAL_POINT         固定主点坐标
-    // CV_CALIB_FIX_ASPECT_RATIO            固定焦距比
+    // CV_CALIB_FIX_FOCAL_LENGTH            固定焦距
+    // CV_CALIB_FIX_ASPECT_RATIO            固定焦距比，只计算fy
+    // CV_CALIB_SAME_FOCAL_LENGTH           固定x, y方向焦距比为1
     // CV_CALIB_ZERO_TANGENT_DIST           不计算切向畸变(p1, p2)
     // CV_CALIB_FIX_K1,...,CV_CALIB_FIX_K6  固定径向畸变K1-K6参数
     // CV_CALIB_RATIONAL_MODEL              计算8参数畸变模型(K4-K6)，不写则计算5参数
@@ -212,23 +253,23 @@ int main() {
     // CALIB_FIX_S1_S2_S3_S4                固定S1-S4参数值
     // CALIB_TILTED_MODEL                   计算(tauX, tauY)参数，不写则不计算
     // CALIB_FIX_TAUX_TAUY                  固定(tauX, tauY)参数值
-    double reprojectionErrorL = calibrateCamera(objectPoints, allCornersL, imageSize,
-                                                cameraMatrixL, distCoeffsL, rVecsL, tVecsL,
-                                                stdDevIntrinsicsL, stdDevExtrinsicsL, perViewErrorsL,
-                                                CV_CALIB_USE_INTRINSIC_GUESS |
-                                                CV_CALIB_FIX_PRINCIPAL_POINT);
-    double reprojectionErrorR = calibrateCamera(objectPoints, allCornersR, imageSize,
-                                                cameraMatrixR, distCoeffsR, rVecsR, tVecsR,
-                                                stdDevIntrinsicsR, stdDevExtrinsicsR, perViewErrorsR,
-                                                CV_CALIB_USE_INTRINSIC_GUESS |
-                                                CV_CALIB_FIX_PRINCIPAL_POINT);
+    double reprojErrorStereo = stereoCalibrate(objectPoints, allCornersL, allCornersR,
+                                               cameraMatrixL, distCoeffsL,
+                                               cameraMatrixR, distCoeffsR,
+                                               imageSize, R, T, E, F,
+                                               CALIB_USE_INTRINSIC_GUESS |
+                                               CALIB_FIX_PRINCIPAL_POINT,
+                                               TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 40, 1e-5));
 
-    // 输出标定结果
-    printCalibResults(cameraMatrixL, distCoeffsL, reprojectionErrorL, stdDevIntrinsicsL);
-    printCalibResults(cameraMatrixR, distCoeffsR, reprojectionErrorR, stdDevIntrinsicsR);
-    printCalibResults(cameraMatrixL, distCoeffsL, reprojectionErrorL, stdDevIntrinsicsL, stdDevExtrinsicsL, perViewErrorsL, foutL);
-    printCalibResults(cameraMatrixR, distCoeffsR, reprojectionErrorR, stdDevIntrinsicsR, stdDevExtrinsicsR, perViewErrorsR, foutR);
-    
+
+    // 加载测距所用的图像文件路径
+    ifstream finRangingL("ranging3_L.txt");
+    ifstream finRangingR("ranging3_R.txt");
+
+    // 加载测距图像
+    // TODO
+
+
     system("pause");
     return 0;
 }
