@@ -1,0 +1,14 @@
+data/example/chess1.bmp
+data/example/chess2.bmp
+data/example/chess3.bmp
+data/example/chess4.bmp
+data/example/chess5.bmp
+data/example/chess6.bmp
+data/example/chess7.bmp
+data/example/chess8.bmp
+data/example/chess9.bmp
+data/example/chess10.bmp
+data/example/chess11.bmp
+data/example/chess12.bmp
+data/example/chess13.bmp
+data/example/chess14.bmp
