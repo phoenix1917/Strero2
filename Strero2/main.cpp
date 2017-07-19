@@ -11,6 +11,11 @@
 using namespace cv;
 using namespace std;
 
+// 用于记录测距图像中的同名点
+Point2f targetL, targetR;
+// 读入的测距图像序列
+vector<Mat> rangingSetL, rangingSetR;
+
 int main() {
     // 加载标定所用图像文件的路径
     ifstream finL("calibdata3_L.txt");
@@ -24,7 +29,9 @@ int main() {
     // 显示角点提取结果
     bool showCornerExt = false;
     // 进行单目标定
-    bool doSingleCalib = false;
+    bool doSingleCalib = true;
+    // 进行双目标定
+    bool doStereoCalib = true;
 
 #ifdef USING_BOARD_1
     // 标定板1：9x7，35mm，白色边缘
@@ -235,45 +242,198 @@ int main() {
         printCalibResults(cameraMatrixR, distCoeffsR, reprojectionErrorR, stdDevIntrinsicsR, stdDevExtrinsicsR, perViewErrorsR, foutR);
     }
     
-
-    Mat R, T, E, F;
-
-    // 立体标定
-    // flags:
-    // CV_CALIB_FIX_INTRINSIC               固定内参数和畸变模型，只计算(R, T, E, F)
-    // CV_CALIB_USE_INTRINSIC_GUESS         使用预估的内参数矩阵
-    // CV_CALIB_FIX_PRINCIPAL_POINT         固定主点坐标
-    // CV_CALIB_FIX_FOCAL_LENGTH            固定焦距
-    // CV_CALIB_FIX_ASPECT_RATIO            固定焦距比，只计算fy
-    // CV_CALIB_SAME_FOCAL_LENGTH           固定x, y方向焦距比为1
-    // CV_CALIB_ZERO_TANGENT_DIST           不计算切向畸变(p1, p2)
-    // CV_CALIB_FIX_K1,...,CV_CALIB_FIX_K6  固定径向畸变K1-K6参数
-    // CV_CALIB_RATIONAL_MODEL              计算8参数畸变模型(K4-K6)，不写则计算5参数
-    // CALIB_THIN_PRISM_MODEL               计算S1-S4参数，不写则不计算
-    // CALIB_FIX_S1_S2_S3_S4                固定S1-S4参数值
-    // CALIB_TILTED_MODEL                   计算(tauX, tauY)参数，不写则不计算
-    // CALIB_FIX_TAUX_TAUY                  固定(tauX, tauY)参数值
-    double reprojErrorStereo = stereoCalibrate(objectPoints, allCornersL, allCornersR,
-                                               cameraMatrixL, distCoeffsL,
-                                               cameraMatrixR, distCoeffsR,
-                                               imageSize, R, T, E, F,
-                                               CALIB_USE_INTRINSIC_GUESS |
-                                               CALIB_FIX_PRINCIPAL_POINT,
-                                               TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 40, 1e-5));
-
+    if(doStereoCalib) {
+        Mat R, T, E, F;
+        // 立体标定
+        // flags:
+        // CV_CALIB_FIX_INTRINSIC               固定内参数和畸变模型，只计算(R, T, E, F)
+        // CV_CALIB_USE_INTRINSIC_GUESS         使用预估的内参数矩阵
+        // CV_CALIB_FIX_PRINCIPAL_POINT         固定主点坐标
+        // CV_CALIB_FIX_FOCAL_LENGTH            固定焦距
+        // CV_CALIB_FIX_ASPECT_RATIO            固定焦距比，只计算fy
+        // CV_CALIB_SAME_FOCAL_LENGTH           固定x, y方向焦距比为1
+        // CV_CALIB_ZERO_TANGENT_DIST           不计算切向畸变(p1, p2)
+        // CV_CALIB_FIX_K1,...,CV_CALIB_FIX_K6  固定径向畸变K1-K6参数
+        // CV_CALIB_RATIONAL_MODEL              计算8参数畸变模型(K4-K6)，不写则计算5参数
+        // CALIB_THIN_PRISM_MODEL               计算S1-S4参数，不写则不计算
+        // CALIB_FIX_S1_S2_S3_S4                固定S1-S4参数值
+        // CALIB_TILTED_MODEL                   计算(tauX, tauY)参数，不写则不计算
+        // CALIB_FIX_TAUX_TAUY                  固定(tauX, tauY)参数值
+        double reprojErrorStereo = stereoCalibrate(objectPoints, allCornersL, allCornersR,
+                                                   cameraMatrixL, distCoeffsL,
+                                                   cameraMatrixR, distCoeffsR,
+                                                   imageSize, R, T, E, F,
+                                                   CALIB_USE_INTRINSIC_GUESS |
+                                                   CALIB_FIX_PRINCIPAL_POINT,
+                                                   TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 40, 1e-5));
+    }
 
     // 加载测距所用的图像文件路径
     ifstream finRangingL("ranging3_L.txt");
     ifstream finRangingR("ranging3_R.txt");
+    // 用于测距的图像的大小
+    Size rangingImgSize;
+    // 用于测距的图像数
+    int rangingImgCount;
 
-    // 加载测距图像
-    // TODO
+    // 读取左目图像
+    while(getline(finRangingL, fileName)) {
+        Mat img = imread(fileName, CV_LOAD_IMAGE_GRAYSCALE);
+        rangingSetL.push_back(img);
+    }
+    rangingImgSize = rangingSetL[0].size();
+    rangingImgCount = rangingSetL.size();
+    // 读取右目图像
+    while(getline(finRangingR, fileName)) {
+        Mat img = imread(fileName, CV_LOAD_IMAGE_GRAYSCALE);
+        rangingSetR.push_back(img);
+    }
+    namedWindow("Ranging_leftcam",
+                WINDOW_NORMAL |
+                WINDOW_KEEPRATIO |
+                WINDOW_GUI_EXPANDED);
+    namedWindow("Ranging_rightcam",
+                WINDOW_NORMAL |
+                WINDOW_KEEPRATIO |
+                WINDOW_GUI_EXPANDED);
+
+    // 逐图像输入同名点测距
+    for(int i = 0; i < rangingImgCount; i++) {
+        imshow("Ranging_leftcam", rangingSetL[i]);
+        imshow("Ranging_rightcam", rangingSetR[i]);
+        setMouseCallback("Ranging_leftcam", onMouseL, (void *)i);
+        setMouseCallback("Ranging_rightcam", onMouseR, (void *)i);
+        cout << "在左右目图像中选择一个同名点" << endl;
+        waitKey();
+        cout << ">>>>>>>>>>>>>>>>>>>>>>>>" << endl << endl;
+        cout << "目标点：L(" << targetL.x << ", " << targetL.y << ")   ";
+        cout << "R(" << targetR.x << ", " << targetR.y << ")" << endl << endl;
+
+        // 三角化
+        // TODO
+    }
+
+
+    // TODOs:
+    // 加载测距图像 √
+    // 选同名点 √
+    // 三角化
 
 
     system("pause");
     return 0;
 }
 
+
+bool find_transform(Mat& K, vector<Point2f>& p1, vector<Point2f>& p2, 
+                    Mat& R, Mat& T, Mat& mask) {
+    //根据内参矩阵获取相机的焦距和光心坐标（主点坐标）
+    double focal_length = 0.5*(K.at<double>(0) + K.at<double>(4));
+    Point2d principle_point(K.at<double>(2), K.at<double>(5));
+
+    //根据匹配点求取本征矩阵，使用RANSAC，进一步排除失配点
+    Mat E = findEssentialMat(p1, p2, focal_length, principle_point, 
+                             RANSAC, 0.999, 1.0, mask);
+    if(E.empty()) {
+        return false;
+    }
+
+    double feasible_count = countNonZero(mask);
+    cout << (int)feasible_count << " -in- " << p1.size() << endl;
+    //对于RANSAC而言，outlier数量大于50%时，结果是不可靠的
+    if(feasible_count <= 15 || (feasible_count / p1.size()) < 0.6) {
+        return false;
+    }
+
+    //分解本征矩阵，获取相对变换
+    int pass_count = recoverPose(E, p1, p2, R, T, focal_length, principle_point, mask);
+
+    //同时位于两个相机前方的点的数量要足够大
+    if(((double)pass_count) / feasible_count < 0.7) {
+        return false;
+    }
+
+    return true;
+}
+
+
+void reconstruct(Mat& K, Mat& R, Mat& T, vector<Point2f>& p1, 
+                 vector<Point2f>& p2, Mat& structure) {
+    //两个相机的投影矩阵[R T]，triangulatePoints只支持float型
+    Mat proj1(3, 4, CV_32FC1);
+    Mat proj2(3, 4, CV_32FC1);
+
+    proj1(Range(0, 3), Range(0, 3)) = Mat::eye(3, 3, CV_32FC1);
+    proj1.col(3) = Mat::zeros(3, 1, CV_32FC1);
+
+    R.convertTo(proj2(Range(0, 3), Range(0, 3)), CV_32FC1);
+    T.convertTo(proj2.col(3), CV_32FC1);
+
+    Mat fK;
+    K.convertTo(fK, CV_32FC1);
+    proj1 = fK*proj1;
+    proj2 = fK*proj2;
+
+    //三角化重建
+    triangulatePoints(proj1, proj2, p1, p2, structure);
+}
+
+
+/**
+ * 同名点选取鼠标回调事件（左）
+ * @param event  鼠标操作事件类型
+ *        enum cv::MouseEventTypes
+ *        EVENT_MOUSEMOVE       滑动
+ *        EVENT_LBUTTONDOWN     左键按下
+ *        EVENT_RBUTTONDOWN     右键按下
+ *        EVENT_MBUTTONDOWN     中键按下
+ *        EVENT_LBUTTONUP       左键释放
+ *        EVENT_RBUTTONUP       右键释放
+ *        EVENT_MBUTTONUP       中键释放
+ *        EVENT_LBUTTONDBLCLK   左键双击
+ *        EVENT_RBUTTONDBLCLK   右键双击
+ *        EVENT_MBUTTONDBLCLK   中键双击
+ *        EVENT_MOUSEWHEEL      滚轮上下滑动
+ *        EVENT_MOUSEHWHEEL     滚轮左右滑动
+ * @param x      鼠标位于窗口的x坐标位置（窗口左上角默认为原点，向右为x轴，向下为y轴）
+ * @param y      鼠标位于窗口的y坐标位置
+ * @param flags  鼠标拖拽及键鼠联合事件标志位
+ *        enum cv::MouseEventFlags
+ *        EVENT_FLAG_LBUTTON    左键拖拽
+ *        EVENT_FLAG_RBUTTON    右键拖拽
+ *        EVENT_FLAG_MBUTTON    中键拖拽
+ *        EVENT_FLAG_CTRLKEY    Ctrl键按下
+ *        EVENT_FLAG_SHIFTKEY   Shift键按下
+ *        EVENT_FLAG_ALTKEY     Alt键按下
+ * @param param  自定义数据
+ */
+void onMouseL(int event, int x, int y, int flags, void *param) {
+    if(event == EVENT_LBUTTONUP) {
+        int i = *(int *)param;
+        // 记录当前位置的坐标，画一个点
+        targetL = Point(x, y);
+        circle(rangingSetL[i], targetL, 3, Scalar(255, 98, 97, 0), CV_FILLED, LINE_AA, 0);
+        imshow("Ranging_leftcam", rangingSetL[i]);
+    }
+}
+
+/**
+* 同名点选取鼠标回调事件（右）
+* @param event  鼠标操作事件类型
+* @param x      鼠标位于窗口的x坐标位置
+* @param y      鼠标位于窗口的y坐标位置
+* @param flags  鼠标拖拽及键鼠联合事件标志位
+* @param param  自定义数据
+*/
+void onMouseR(int event, int x, int y, int flags, void *param) {
+    if(event == EVENT_LBUTTONUP) {
+        int i = *(int *)param;
+        // 记录当前位置的坐标，画一个点
+        targetR = Point(x, y);
+        circle(rangingSetR[i], targetR, 3, Scalar(255, 98, 97, 0), CV_FILLED, LINE_AA, 0);
+        imshow("Ranging_rightcam", rangingSetR[i]);
+    }
+}
 
 /**
  * 输出标定结果到控制台。
