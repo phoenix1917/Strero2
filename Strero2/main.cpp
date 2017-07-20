@@ -29,9 +29,9 @@ int main() {
     // 显示角点提取结果
     bool showCornerExt = false;
     // 进行单目标定
-    bool doSingleCalib = true;
+    bool doSingleCalib = false;
     // 进行双目标定
-    bool doStereoCalib = true;
+    bool doStereoCalib = false;
 
 #ifdef USING_BOARD_1
     // 标定板1：9x7，35mm，白色边缘
@@ -87,17 +87,16 @@ int main() {
     Mat cameraMatrixR = Mat::eye(3, 3, CV_64F);
     Mat distCoeffsR = Mat::zeros(5, 1, CV_64F);
 
-
     // 读取左目图像
     while(getline(finL, fileName)) {
-        Mat img = imread(fileName, CV_LOAD_IMAGE_GRAYSCALE);
+        Mat img = imread(fileName);
         imageSetL.push_back(img);
     }
     imageSize = imageSetL[0].size();
     imgCount = imageSetL.size();
     // 读取右目图像
     while(getline(finR, fileName)) {
-        Mat img = imread(fileName, CV_LOAD_IMAGE_GRAYSCALE);
+        Mat img = imread(fileName);
         imageSetR.push_back(img);
     }
     if(imgCount != imageSetR.size()) {
@@ -186,7 +185,7 @@ int main() {
             }
         }
     }
-
+    
     // 对所有已接受图像，初始化标定板上角点的三维坐标
     calcBoardCornerPositions(boardSize, squareSize, objectPoints[0]);
     objectPoints.resize(allCornersL.size(), objectPoints[0]);
@@ -278,31 +277,27 @@ int main() {
 
     // 读取左目图像
     while(getline(finRangingL, fileName)) {
-        Mat img = imread(fileName, CV_LOAD_IMAGE_GRAYSCALE);
+        Mat img = imread(fileName);
         rangingSetL.push_back(img);
     }
     rangingImgSize = rangingSetL[0].size();
     rangingImgCount = rangingSetL.size();
     // 读取右目图像
     while(getline(finRangingR, fileName)) {
-        Mat img = imread(fileName, CV_LOAD_IMAGE_GRAYSCALE);
+        Mat img = imread(fileName);
         rangingSetR.push_back(img);
     }
-    namedWindow("Ranging_leftcam",
-                WINDOW_NORMAL |
-                WINDOW_KEEPRATIO |
-                WINDOW_GUI_EXPANDED);
-    namedWindow("Ranging_rightcam",
-                WINDOW_NORMAL |
-                WINDOW_KEEPRATIO |
-                WINDOW_GUI_EXPANDED);
+    namedWindow("Ranging_leftcam");
+    namedWindow("Ranging_rightcam");
 
     // 逐图像输入同名点测距
-    for(int i = 0; i < rangingImgCount; i++) {
+    for(int i = 1; i < rangingImgCount; i++) {
         imshow("Ranging_leftcam", rangingSetL[i]);
         imshow("Ranging_rightcam", rangingSetR[i]);
-        setMouseCallback("Ranging_leftcam", onMouseL, (void *)i);
-        setMouseCallback("Ranging_rightcam", onMouseR, (void *)i);
+        targetL = Point(0, 0);
+        targetR = Point(0, 0);
+        setMouseCallback("Ranging_leftcam", onMouseL, (void *)&i);
+        setMouseCallback("Ranging_rightcam", onMouseR, (void *)&i);
         cout << "在左右目图像中选择一个同名点" << endl;
         waitKey();
         cout << ">>>>>>>>>>>>>>>>>>>>>>>>" << endl << endl;
@@ -409,11 +404,13 @@ void reconstruct(Mat& K, Mat& R, Mat& T, vector<Point2f>& p1,
  */
 void onMouseL(int event, int x, int y, int flags, void *param) {
     if(event == EVENT_LBUTTONUP) {
-        int i = *(int *)param;
+        int *i = (int *)param;
+        Mat frame = rangingSetL[*i].clone();
         // 记录当前位置的坐标，画一个点
         targetL = Point(x, y);
-        circle(rangingSetL[i], targetL, 3, Scalar(255, 98, 97, 0), CV_FILLED, LINE_AA, 0);
-        imshow("Ranging_leftcam", rangingSetL[i]);
+        circle(frame, targetL, 2, Scalar(97, 98, 255), CV_FILLED, LINE_AA, 0);
+        circle(frame, targetL, 20, Scalar(75, 83, 171), 2, LINE_AA, 0);
+        imshow("Ranging_leftcam", frame);
     }
 }
 
@@ -427,11 +424,13 @@ void onMouseL(int event, int x, int y, int flags, void *param) {
 */
 void onMouseR(int event, int x, int y, int flags, void *param) {
     if(event == EVENT_LBUTTONUP) {
-        int i = *(int *)param;
+        int *i = (int *)param;
+        Mat frame = rangingSetR[*i].clone();
         // 记录当前位置的坐标，画一个点
         targetR = Point(x, y);
-        circle(rangingSetR[i], targetR, 3, Scalar(255, 98, 97, 0), CV_FILLED, LINE_AA, 0);
-        imshow("Ranging_rightcam", rangingSetR[i]);
+        circle(frame, targetR, 2, Scalar(97, 98, 255), CV_FILLED, LINE_AA, 0);
+        circle(frame, targetR, 20, Scalar(75, 83, 171), 2, LINE_AA, 0);
+        imshow("Ranging_rightcam", frame);
     }
 }
 

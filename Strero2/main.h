@@ -20,4 +20,7 @@ void printCalibResults(Mat &cameraMatrix, Mat &distCoeffs, double reprojectionEr
 void printCalibResults(Mat &cameraMatrix, Mat &distCoeffs, double reprojectionError, Mat &stdDevIntrinsics);
 void printCalibResults(Mat &cameraMatrix, Mat &distCoeffs, double reprojectionError);
 
+void onMouseL(int event, int x, int y, int flags, void *param);
+void onMouseR(int event, int x, int y, int flags, void *param);
+
 #endif
