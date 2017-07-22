@@ -29,7 +29,7 @@ int main() {
     // 显示角点提取结果
     bool showCornerExt = false;
     // 进行单目标定
-    bool doSingleCalib = false;
+    bool doSingleCalib = true;
     // 进行双目标定
     bool doStereoCalib = false;
 
@@ -267,52 +267,50 @@ int main() {
                                                    TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 40, 1e-5));
     }
 
-    // 加载测距所用的图像文件路径
-    ifstream finRangingL("ranging3_L.txt");
-    ifstream finRangingR("ranging3_R.txt");
-    // 用于测距的图像的大小
-    Size rangingImgSize;
-    // 用于测距的图像数
-    int rangingImgCount;
+    //// 加载测距所用的图像文件路径
+    //ifstream finRangingL("ranging3_L.txt");
+    //ifstream finRangingR("ranging3_R.txt");
+    //// 用于测距的图像的大小
+    //Size rangingImgSize;
+    //// 用于测距的图像数
+    //int rangingImgCount;
 
-    // 读取左目图像
-    while(getline(finRangingL, fileName)) {
-        Mat img = imread(fileName);
-        rangingSetL.push_back(img);
-    }
-    rangingImgSize = rangingSetL[0].size();
-    rangingImgCount = rangingSetL.size();
-    // 读取右目图像
-    while(getline(finRangingR, fileName)) {
-        Mat img = imread(fileName);
-        rangingSetR.push_back(img);
-    }
-    namedWindow("Ranging_leftcam");
-    namedWindow("Ranging_rightcam");
+    //// 读取左目图像
+    //while(getline(finRangingL, fileName)) {
+    //    Mat img = imread(fileName);
+    //    rangingSetL.push_back(img);
+    //}
+    //rangingImgSize = rangingSetL[0].size();
+    //rangingImgCount = rangingSetL.size();
+    //// 读取右目图像
+    //while(getline(finRangingR, fileName)) {
+    //    Mat img = imread(fileName);
+    //    rangingSetR.push_back(img);
+    //}
+    //namedWindow("Ranging_leftcam");
+    //namedWindow("Ranging_rightcam");
 
-    // 逐图像输入同名点测距
-    for(int i = 1; i < rangingImgCount; i++) {
-        imshow("Ranging_leftcam", rangingSetL[i]);
-        imshow("Ranging_rightcam", rangingSetR[i]);
-        targetL = Point(0, 0);
-        targetR = Point(0, 0);
-        setMouseCallback("Ranging_leftcam", onMouseL, (void *)&i);
-        setMouseCallback("Ranging_rightcam", onMouseR, (void *)&i);
-        cout << "在左右目图像中选择一个同名点" << endl;
-        waitKey();
-        cout << ">>>>>>>>>>>>>>>>>>>>>>>>" << endl << endl;
-        cout << "目标点：L(" << targetL.x << ", " << targetL.y << ")   ";
-        cout << "R(" << targetR.x << ", " << targetR.y << ")" << endl << endl;
-
-        // 三角化
-        // TODO
-    }
-
+    //// 逐图像输入同名点测距
+    //for(int i = 1; i < rangingImgCount; i++) {
+    //    imshow("Ranging_leftcam", rangingSetL[i]);
+    //    imshow("Ranging_rightcam", rangingSetR[i]);
+    //    targetL = Point(0, 0);
+    //    targetR = Point(0, 0);
+    //    setMouseCallback("Ranging_leftcam", onMouseL, (void *)&i);
+    //    setMouseCallback("Ranging_rightcam", onMouseR, (void *)&i);
+    //    cout << "在左右目图像中选择一个同名点" << endl;
+    //    waitKey();
+    //    cout << ">>>>>>>>>>>>>>>>>>>>>>>>" << endl << endl;
+    //    cout << "目标点：L(" << targetL.x << ", " << targetL.y << ")   ";
+    //    cout << "R(" << targetR.x << ", " << targetR.y << ")" << endl << endl;
+    //}
 
     // TODOs:
-    // 加载测距图像 √
-    // 选同名点 √
+    // 修正单目标定结果（固定主点坐标和畸变模型）
+    // 以标定板角点作为同名点，求E，求R，t
     // 三角化
+    // 求解距离
+
 
 
     system("pause");
@@ -320,31 +318,66 @@ int main() {
 }
 
 
-bool find_transform(Mat& K, vector<Point2f>& p1, vector<Point2f>& p2, 
-                    Mat& R, Mat& T, Mat& mask) {
+/**
+* 固定主点坐标到指定值
+* @param K      内参数矩阵
+* @param point  要固定的主点坐标位置
+*/
+void fixPrinciplePoint(Mat& K, Point2f point) {
+
+}
+
+
+/**
+* 去除不匹配点对
+* @param p1     
+* @param mask   
+*/
+void maskoutPoints(vector<Point2f>& p1, Mat& mask) {
+    vector<Point2f> p1_copy = p1;
+    p1.clear();
+
+    for(int i = 0; i < mask.rows; ++i) {
+        if(mask.at<uchar>(i) > 0) {
+            p1.push_back(p1_copy[i]);
+        }
+    }
+}
+
+
+/**
+* 求本征矩阵，并分解出相机双目外参（位姿关系）
+* @param K
+* @param R
+* @param T
+* @param p1
+* @param p2
+* @param mask
+*/
+bool findTransform(Mat& K, Mat& R, Mat& T, 
+                   vector<Point2f>& p1, vector<Point2f>& p2, Mat& mask) {
     //根据内参矩阵获取相机的焦距和光心坐标（主点坐标）
-    double focal_length = 0.5*(K.at<double>(0) + K.at<double>(4));
-    Point2d principle_point(K.at<double>(2), K.at<double>(5));
+    double focalLength = 0.5 * (K.at<double>(0) + K.at<double>(4));
+    Point2d principlePoint(K.at<double>(2), K.at<double>(5));
 
     //根据匹配点求取本征矩阵，使用RANSAC，进一步排除失配点
-    Mat E = findEssentialMat(p1, p2, focal_length, principle_point, 
-                             RANSAC, 0.999, 1.0, mask);
+    Mat E = findEssentialMat(p1, p2, focalLength, principlePoint, RANSAC, 0.999, 1.0, mask);
     if(E.empty()) {
         return false;
     }
 
-    double feasible_count = countNonZero(mask);
-    cout << (int)feasible_count << " -in- " << p1.size() << endl;
+    double feasibleCount = countNonZero(mask);
+    cout << (int)feasibleCount << " -in- " << p1.size() << endl;
     //对于RANSAC而言，outlier数量大于50%时，结果是不可靠的
-    if(feasible_count <= 15 || (feasible_count / p1.size()) < 0.6) {
+    if(feasibleCount <= 15 || (feasibleCount / p1.size()) < 0.6) {
         return false;
     }
 
-    //分解本征矩阵，获取相对变换
-    int pass_count = recoverPose(E, p1, p2, R, T, focal_length, principle_point, mask);
+    //分解本征矩阵，获取相对变换。返回inliers数目
+    int passCount = recoverPose(E, p1, p2, R, T, focalLength, principlePoint, mask);
 
     //同时位于两个相机前方的点的数量要足够大
-    if(((double)pass_count) / feasible_count < 0.7) {
+    if(((double)passCount) / feasibleCount < 0.7) {
         return false;
     }
 
@@ -352,15 +385,69 @@ bool find_transform(Mat& K, vector<Point2f>& p1, vector<Point2f>& p2,
 }
 
 
-void reconstruct(Mat& K, Mat& R, Mat& T, vector<Point2f>& p1, 
-                 vector<Point2f>& p2, Mat& structure) {
-    //两个相机的投影矩阵[R T]，triangulatePoints只支持float型
+/**
+* 求本征矩阵，并分解出相机双目外参（位姿关系）
+* @param K1
+* @param K2
+* @param R
+* @param T
+* @param p1
+* @param p2
+* @param mask
+*/
+bool findTransform(Mat& K1, Mat& K2, Mat& R, Mat& T,
+                   vector<Point2f>& p1, vector<Point2f>& p2, Mat& mask) {
+    //根据内参矩阵获取相机的焦距和光心坐标（主点坐标）
+    double focalLength = 0.5 * (K1.at<double>(0) + K1.at<double>(4) + 
+                                K2.at<double>(0) + K2.at<double>(4));
+    Point2d principlePoint((K1.at<double>(2) + K2.at<double>(2)) / 2, 
+                           (K1.at<double>(5) + K2.at<double>(5)) / 2);
+
+    //根据匹配点求取本征矩阵，使用RANSAC，进一步排除失配点
+    Mat E = findEssentialMat(p1, p2, focalLength, principlePoint, RANSAC, 0.999, 1.0, mask);
+    if(E.empty()) {
+        return false;
+    }
+
+    double feasibleCount = countNonZero(mask);
+    cout << (int)feasibleCount << " -in- " << p1.size() << endl;
+    //对于RANSAC而言，outlier数量大于50%时，结果是不可靠的
+    if(feasibleCount <= 15 || (feasibleCount / p1.size()) < 0.6) {
+        return false;
+    }
+
+    //分解本征矩阵，获取相对变换。返回inliers数目
+    int passCount = recoverPose(E, p1, p2, R, T, focalLength, principlePoint, mask);
+
+    //同时位于两个相机前方的点的数量要足够大
+    if(((double)passCount) / feasibleCount < 0.7) {
+        return false;
+    }
+
+    return true;
+}
+
+
+/**
+* 三角化重建空间点
+* @param K
+* @param R
+* @param T
+* @param p1
+* @param p2
+* @param structure
+*/
+void reconstruct(Mat& K, Mat& R, Mat& T,
+                 vector<Point2f>& p1, vector<Point2f>& p2, Mat& structure) {
+    // 两个相机的投影矩阵（单应性矩阵）K[R T]，triangulatePoints只支持float型（CV_32FC1）
     Mat proj1(3, 4, CV_32FC1);
     Mat proj2(3, 4, CV_32FC1);
 
+    // 初始化camera1的投影矩阵
+    // 世界坐标系建立在camera1的摄像机坐标系上
     proj1(Range(0, 3), Range(0, 3)) = Mat::eye(3, 3, CV_32FC1);
     proj1.col(3) = Mat::zeros(3, 1, CV_32FC1);
-
+    // 初始化camera2的投影矩阵
     R.convertTo(proj2(Range(0, 3), Range(0, 3)), CV_32FC1);
     T.convertTo(proj2.col(3), CV_32FC1);
 
@@ -369,7 +456,42 @@ void reconstruct(Mat& K, Mat& R, Mat& T, vector<Point2f>& p1,
     proj1 = fK*proj1;
     proj2 = fK*proj2;
 
-    //三角化重建
+    // 三角重建
+    triangulatePoints(proj1, proj2, p1, p2, structure);
+}
+
+
+/**
+* 三角化重建空间点
+* @param K1
+* @param K2
+* @param R
+* @param T
+* @param p1
+* @param p2
+* @param structure
+*/
+void reconstruct(Mat& K1, Mat& K2, Mat& R, Mat& T,
+                 vector<Point2f>& p1, vector<Point2f>& p2, Mat& structure) {
+    // 两个相机的投影矩阵（单应性矩阵）K[R T]，triangulatePoints只支持float型（CV_32FC1）
+    Mat proj1(3, 4, CV_32FC1);
+    Mat proj2(3, 4, CV_32FC1);
+
+    // 初始化camera1的投影矩阵
+    // 世界坐标系建立在camera1的摄像机坐标系上
+    proj1(Range(0, 3), Range(0, 3)) = Mat::eye(3, 3, CV_32FC1);
+    proj1.col(3) = Mat::zeros(3, 1, CV_32FC1);
+    // 初始化camera2的投影矩阵
+    R.convertTo(proj2(Range(0, 3), Range(0, 3)), CV_32FC1);
+    T.convertTo(proj2.col(3), CV_32FC1);
+
+    Mat fK1, fK2;
+    K1.convertTo(fK1, CV_32FC1);
+    K2.convertTo(fK1, CV_32FC1);
+    proj1 = fK1*proj1;
+    proj2 = fK2*proj2;
+
+    // 三角重建
     triangulatePoints(proj1, proj2, p1, p2, structure);
 }
 
@@ -414,6 +536,7 @@ void onMouseL(int event, int x, int y, int flags, void *param) {
     }
 }
 
+
 /**
 * 同名点选取鼠标回调事件（右）
 * @param event  鼠标操作事件类型
@@ -433,6 +556,7 @@ void onMouseR(int event, int x, int y, int flags, void *param) {
         imshow("Ranging_rightcam", frame);
     }
 }
+
 
 /**
  * 输出标定结果到控制台。
