@@ -29,6 +29,8 @@ void reconstruct(Mat& K1, Mat& K2, Mat& R, Mat& T, vector<Point2f>& p1, vector<P
 bool findTransform(Mat& K, Mat& R, Mat& T, vector<Point2f>& p1, vector<Point2f>& p2, Mat& mask);
 bool findTransform(Mat& K1, Mat& K2, Mat& R, Mat& T, vector<Point2f>& p1, vector<Point2f>& p2, Mat& mask);
 void maskoutPoints(vector<Point2f>& p1, Mat& mask);
-
+bool fixPrinciplePoint(Mat& K, Point2f point);
+void maskoutPoints(vector<Point2f>& p1, Mat& mask);
+void toPoints3D(Mat& points4D, Mat& points3D);
 
 #endif

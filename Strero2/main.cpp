@@ -86,6 +86,8 @@ int main() {
     Mat distCoeffsL = Mat::zeros(5, 1, CV_64F);
     Mat cameraMatrixR = Mat::eye(3, 3, CV_64F);
     Mat distCoeffsR = Mat::zeros(5, 1, CV_64F);
+    // 双目外参，本征矩阵，基础矩阵
+    Mat R, T, E, F;
 
     // 读取左目图像
     while(getline(finL, fileName)) {
@@ -242,7 +244,6 @@ int main() {
     }
     
     if(doStereoCalib) {
-        Mat R, T, E, F;
         // 立体标定
         // flags:
         // CV_CALIB_FIX_INTRINSIC               固定内参数和畸变模型，只计算(R, T, E, F)
@@ -305,13 +306,48 @@ int main() {
     //    cout << "R(" << targetR.x << ", " << targetR.y << ")" << endl << endl;
     //}
 
-    // TODOs:
-    // 修正单目标定结果（固定主点坐标和畸变模型）
-    // 以标定板角点作为同名点，求E，求R，t
-    // 三角化
-    // 求解距离
 
+    // 理想主点坐标
+    Point ppIdeal = Point(imageSize.width / 2, imageSize.height / 2);
+    // 匹配点对flag, 重建出的世界坐标系坐标（齐次）
+    Mat mask, structure, structure3D;
+    // 空间点对左右目摄像机坐标系的范数
+    double lDist, rDist;
+    // 摄像机间的距离，测距点深度
+    double oDist, dist;
 
+    bool lFixed = fixPrinciplePoint(cameraMatrixL, ppIdeal);
+    bool rFixed = fixPrinciplePoint(cameraMatrixR, ppIdeal);
+    if(lFixed && rFixed) {
+        // 计算E、R、t
+        bool foundE = findTransform(cameraMatrixL, cameraMatrixR, R, T, 
+                                    allCornersL[0], allCornersR[0], mask);
+        // 去除不匹配点对
+        maskoutPoints(allCornersL[0], mask);
+        maskoutPoints(allCornersR[0], mask);
+        // 重建坐标
+        reconstruct(cameraMatrixL, cameraMatrixR, R, T, allCornersL[0], allCornersR[0], structure);
+        
+        // 计算距离（取棋盘格第一个点）
+        toPoints3D(structure, structure3D);
+        // 左目
+        lDist = sqrt(structure3D.at<double>[0][0] * structure3D.at<double>[0][0] +
+                     structure3D.at<double>[0][1] * structure3D.at<double>[0][1] +
+                     structure3D.at<double>[0][2] * structure3D.at<double>[0][2]);
+        // 右目
+        // (Pr)'*E*Pl = 0
+        // TODO
+        // 拆分出E，得到含有距离的T
+        rDist = 100;
+        // 摄像机间的距离
+        oDist = sqrt(T.at<double>[0] * T.at<double>[0] +
+                     T.at<double>[1] * T.at<double>[1] +
+                     T.at<double>[2] * T.at<double>[2]);
+        // 深度
+        dist = sqrt((2 * lDist * lDist + lDist * rDist* rDist - 
+                     lDist * oDist * oDist - oDist * oDist * oDist) / (2 * oDist));
+        cout << "测距点深度 " << dist << " mm" << endl << endl;
+    }
 
     system("pause");
     return 0;
@@ -319,20 +355,43 @@ int main() {
 
 
 /**
-* 固定主点坐标到指定值
-* @param K      内参数矩阵
-* @param point  要固定的主点坐标位置
-*/
-void fixPrinciplePoint(Mat& K, Point2f point) {
-
+ * toPoints3D 将齐次坐标转换为空间坐标
+ * @param points4D [InputArray] 齐次坐标点，4xN
+ * @param points3D [OutputArray] 空间坐标点
+ */
+void toPoints3D(Mat& points4D, Mat& points3D) {
+    points3D = Mat::zeros(3, points4D.size().width, CV_32FC1);
+    for(int i = 0; i < points4D.size().width; i++) {
+        points3D.at<double>[0][i] = points4D.at<double>[0][i] / points4D.at<double>[3][i];
+        points3D.at<double>[1][i] = points4D.at<double>[1][i] / points4D.at<double>[3][i];
+        points3D.at<double>[2][i] = points4D.at<double>[2][i] / points4D.at<double>[3][i];
+    }
 }
 
 
 /**
-* 去除不匹配点对
-* @param p1     
-* @param mask   
-*/
+ * 固定主点坐标到指定值
+ * @param K      [InputOutputArray] 内参数矩阵(CV_64FC1)
+ * @param point  [InputArray] 要固定的主点坐标位置
+ * @return       是否成功操作
+ */
+bool fixPrinciplePoint(Mat& K, Point2f point) {
+    if(K.size() == Size(3, 3)) {
+        K.at<double>(0, 2) = point.x;
+        K.at<double>(1, 2) = point.y;
+        return true;
+    } else {
+        cout << "内参数矩阵大小不正确，请检查" << endl;
+        return false;
+    }
+}
+
+
+/**
+ * 去除不匹配点对
+ * @param [InputOutputArray] p1     
+ * @param [InputArray] mask   
+ */
 void maskoutPoints(vector<Point2f>& p1, Mat& mask) {
     vector<Point2f> p1_copy = p1;
     p1.clear();
@@ -346,14 +405,14 @@ void maskoutPoints(vector<Point2f>& p1, Mat& mask) {
 
 
 /**
-* 求本征矩阵，并分解出相机双目外参（位姿关系）
-* @param K
-* @param R
-* @param T
-* @param p1
-* @param p2
-* @param mask
-*/
+ * 求本征矩阵，并分解出相机双目外参（位姿关系）（内参数使用相同矩阵）
+ * @param K     [InputArray] 内参数矩阵
+ * @param R     [OutputArray] camera2 对 camera1 的旋转矩阵
+ * @param T     [OutputArray] camera2 对 camera1 的平移向量
+ * @param p1    [InputArray] 同名点对在 camera1 图像上的点坐标
+ * @param p2    [InputArray] 同名点对在 camera2 图像上的点坐标
+ * @param mask  [InputOutputArray] 匹配点对flag，接受的匹配点（inliers）返回正值
+ */
 bool findTransform(Mat& K, Mat& R, Mat& T, 
                    vector<Point2f>& p1, vector<Point2f>& p2, Mat& mask) {
     //根据内参矩阵获取相机的焦距和光心坐标（主点坐标）
@@ -386,15 +445,15 @@ bool findTransform(Mat& K, Mat& R, Mat& T,
 
 
 /**
-* 求本征矩阵，并分解出相机双目外参（位姿关系）
-* @param K1
-* @param K2
-* @param R
-* @param T
-* @param p1
-* @param p2
-* @param mask
-*/
+ * 求本征矩阵，并分解出相机双目外参（位姿关系）（内参数使用不同矩阵）
+ * @param K1    [InputArray] camera1 内参数矩阵
+ * @param K2    [InputArray] camera2 内参数矩阵
+ * @param R     [OutputArray] camera2 对 camera1 的旋转矩阵
+ * @param T     [OutputArray] camera2 对 camera1 的平移向量
+ * @param p1    [InputArray] 同名点对在 camera1 图像上的点坐标
+ * @param p2    [InputArray] 同名点对在 camera2 图像上的点坐标
+ * @param mask  [InputOutputArray] 匹配点对flag，接受的匹配点（inliers）返回正值
+ */
 bool findTransform(Mat& K1, Mat& K2, Mat& R, Mat& T,
                    vector<Point2f>& p1, vector<Point2f>& p2, Mat& mask) {
     //根据内参矩阵获取相机的焦距和光心坐标（主点坐标）
@@ -429,14 +488,14 @@ bool findTransform(Mat& K1, Mat& K2, Mat& R, Mat& T,
 
 
 /**
-* 三角化重建空间点
-* @param K
-* @param R
-* @param T
-* @param p1
-* @param p2
-* @param structure
-*/
+ * 三角化重建空间点（内参数使用相同矩阵）
+ * @param K     [InputArray] 内参数矩阵
+ * @param R     [InputArray] camera2 对 camera1 的旋转矩阵
+ * @param T     [InputArray] camera2 对 camera1 的平移向量
+ * @param p1    [InputArray] 同名点对在 camera1 图像上的点坐标
+ * @param p2    [InputArray] 同名点对在 camera2 图像上的点坐标
+ * @param structure [OutputArray] 重建出的空间点（齐次坐标）
+ */
 void reconstruct(Mat& K, Mat& R, Mat& T,
                  vector<Point2f>& p1, vector<Point2f>& p2, Mat& structure) {
     // 两个相机的投影矩阵（单应性矩阵）K[R T]，triangulatePoints只支持float型（CV_32FC1）
@@ -462,14 +521,14 @@ void reconstruct(Mat& K, Mat& R, Mat& T,
 
 
 /**
-* 三角化重建空间点
-* @param K1
-* @param K2
-* @param R
-* @param T
-* @param p1
-* @param p2
-* @param structure
+* 三角化重建空间点（内参数使用不同矩阵）
+* @param K1    [InputArray] camera1 内参数矩阵
+* @param K2    [InputArray] camera2 内参数矩阵
+* @param R     [InputArray] camera2 对 camera1 的旋转矩阵
+* @param T     [InputArray] camera2 对 camera1 的平移向量
+* @param p1    [InputArray] 同名点对在 camera1 图像上的点坐标
+* @param p2    [InputArray] 同名点对在 camera2 图像上的点坐标
+* @param structure [OutputArray] 重建出的空间点（齐次坐标）
 */
 void reconstruct(Mat& K1, Mat& K2, Mat& R, Mat& T,
                  vector<Point2f>& p1, vector<Point2f>& p2, Mat& structure) {
