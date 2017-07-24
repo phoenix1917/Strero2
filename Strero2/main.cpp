@@ -111,10 +111,11 @@ int main() {
     for(int i = 0; i < imgCount; i++) {
         bool foundAllCornersL = false, foundAllCornersR = false;
         vector<Point2f> cornerBufL, cornerBufR;
-        Mat viewL = imageSetL[i];
-        Mat viewR = imageSetR[i];
-        Mat viewLSubpix = imageSetL[i];
-        Mat viewRSubpix = imageSetR[i];
+        Mat viewL, viewR, grayL, grayR;
+        viewL = imageSetL[i].clone();
+        viewR = imageSetR[i].clone();
+        cvtColor(imageSetL[i], grayL, CV_RGB2GRAY);
+        cvtColor(imageSetR[i], grayR, CV_RGB2GRAY);
 
         // 寻找棋盘格的内角点位置
         // flags:
@@ -122,9 +123,9 @@ int main() {
         // CV_CALIB_CB_NORMALIZE_IMAGE
         // CV_CALIB_CB_FILTER_QUADS
         // CALIB_CB_FAST_CHECK
-        foundAllCornersL = findChessboardCorners(viewL, boardSize, cornerBufL,
+        foundAllCornersL = findChessboardCorners(grayL, boardSize, cornerBufL,
                                                  CV_CALIB_CB_NORMALIZE_IMAGE);
-        foundAllCornersR = findChessboardCorners(viewR, boardSize, cornerBufR,
+        foundAllCornersR = findChessboardCorners(grayR, boardSize, cornerBufR,
                                                  CV_CALIB_CB_NORMALIZE_IMAGE);
 
         if(showCornerExt) {
@@ -133,25 +134,29 @@ int main() {
             drawChessboardCorners(viewR, boardSize, Mat(cornerBufR), foundAllCornersR);
             imshow("corners-leftcam", viewL);
             imshow("corners-rightcam", viewR);
-            waitKey(400);
+            waitKey();
         }
 
         if(foundAllCornersL && foundAllCornersR) {
             // 记录这组图像下标
             acceptedCount += 1;
             acceptedImages.push_back(i);
-            // 寻找亚像素级角点
-            find4QuadCornerSubpix(viewLSubpix, cornerBufL, Size(5, 5));
-            find4QuadCornerSubpix(viewRSubpix, cornerBufR, Size(5, 5));
+            viewL = imageSetL[i].clone();
+            viewR = imageSetR[i].clone();
+            // 寻找亚像素级角点，只能处理灰度图
+            cornerSubPix(grayL, cornerBufL, Size(10, 10), Size(-1, -1),
+                         TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, 0.01));
+            cornerSubPix(grayR, cornerBufR, Size(10, 10), Size(-1, -1),
+                         TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, 0.01));
             allCornersL.push_back(cornerBufL);
             allCornersR.push_back(cornerBufR);
             if(showCornerExt) {
                 // 绘制调整后的角点
-                drawChessboardCorners(viewLSubpix, boardSize, Mat(cornerBufL), true);
-                drawChessboardCorners(viewRSubpix, boardSize, Mat(cornerBufR), true);
-                imshow("corners-leftcam", viewLSubpix);
-                imshow("corners-rightcam", viewRSubpix);
-                waitKey(400);
+                drawChessboardCorners(viewL, boardSize, Mat(cornerBufL), true);
+                drawChessboardCorners(viewR, boardSize, Mat(cornerBufR), true);
+                imshow("corners-leftcam", viewL);
+                imshow("corners-rightcam", viewR);
+                waitKey();
             } else {
                 cout << ">>>" << i + 1;
             }
@@ -198,6 +203,7 @@ int main() {
     cout << "内参数预估：" << endl;
     cout << "cameraMatrix_L = " << endl << cameraMatrixL << endl << endl;
     cout << "cameraMatrix_R = " << endl << cameraMatrixR << endl << endl;
+    cout << "------------------------------------------" << endl << endl;
     foutL << "内参数预估：" << endl;
     foutL << "cameraMatrix = " << endl << cameraMatrixL << endl << endl;
     foutR << "内参数预估：" << endl;
@@ -225,20 +231,28 @@ int main() {
         // CALIB_FIX_S1_S2_S3_S4                固定S1-S4参数值
         // CALIB_TILTED_MODEL                   计算(tauX, tauY)参数，不写则不计算
         // CALIB_FIX_TAUX_TAUY                  固定(tauX, tauY)参数值
+        
+        // 左目
         double reprojectionErrorL = calibrateCamera(objectPoints, allCornersL, imageSize,
                                                     cameraMatrixL, distCoeffsL, rVecsL, tVecsL,
                                                     stdDevIntrinsicsL, stdDevExtrinsicsL, perViewErrorsL,
                                                     CV_CALIB_USE_INTRINSIC_GUESS |
                                                     CV_CALIB_FIX_PRINCIPAL_POINT);
+        cout << "左目";
+        printCalibResults(cameraMatrixL, distCoeffsL, reprojectionErrorL, stdDevIntrinsicsL);
+        cout << "------------------------------------------" << endl << endl;
+
+        // 右目
         double reprojectionErrorR = calibrateCamera(objectPoints, allCornersR, imageSize,
                                                     cameraMatrixR, distCoeffsR, rVecsR, tVecsR,
                                                     stdDevIntrinsicsR, stdDevExtrinsicsR, perViewErrorsR,
                                                     CV_CALIB_USE_INTRINSIC_GUESS |
                                                     CV_CALIB_FIX_PRINCIPAL_POINT);
-
-        // 输出标定结果
-        printCalibResults(cameraMatrixL, distCoeffsL, reprojectionErrorL, stdDevIntrinsicsL);
+        cout << "右目";
         printCalibResults(cameraMatrixR, distCoeffsR, reprojectionErrorR, stdDevIntrinsicsR);
+        cout << "------------------------------------------" << endl << endl;
+        
+        // 输出标定结果到文件
         printCalibResults(cameraMatrixL, distCoeffsL, reprojectionErrorL, stdDevIntrinsicsL, stdDevExtrinsicsL, perViewErrorsL, foutL);
         printCalibResults(cameraMatrixR, distCoeffsR, reprojectionErrorR, stdDevIntrinsicsR, stdDevExtrinsicsR, perViewErrorsR, foutR);
     }
@@ -326,27 +340,17 @@ int main() {
         maskoutPoints(allCornersL[0], mask);
         maskoutPoints(allCornersR[0], mask);
         // 重建坐标
-        reconstruct(cameraMatrixL, cameraMatrixR, R, T, allCornersL[0], allCornersR[0], structure);
+        reconstruct(cameraMatrixL, cameraMatrixR, R, T, 
+                    allCornersL[0], allCornersR[0], structure);
         
         // 计算距离（取棋盘格第一个点）
         toPoints3D(structure, structure3D);
         // 左目
-        lDist = sqrt(structure3D.at<double>[0][0] * structure3D.at<double>[0][0] +
-                     structure3D.at<double>[0][1] * structure3D.at<double>[0][1] +
-                     structure3D.at<double>[0][2] * structure3D.at<double>[0][2]);
-        // 右目
-        // (Pr)'*E*Pl = 0
-        // TODO
-        // 拆分出E，得到含有距离的T
-        rDist = 100;
-        // 摄像机间的距离
-        oDist = sqrt(T.at<double>[0] * T.at<double>[0] +
-                     T.at<double>[1] * T.at<double>[1] +
-                     T.at<double>[2] * T.at<double>[2]);
-        // 深度
-        dist = sqrt((2 * lDist * lDist + lDist * rDist* rDist - 
-                     lDist * oDist * oDist - oDist * oDist * oDist) / (2 * oDist));
-        cout << "测距点深度 " << dist << " mm" << endl << endl;
+        lDist = sqrt(structure3D.at<float>(0, 0) * structure3D.at<float>(0, 0) +
+                     structure3D.at<float>(0, 1) * structure3D.at<float>(0, 1) +
+                     structure3D.at<float>(0, 2) * structure3D.at<float>(0, 2));
+
+        cout << "测距点深度 " << lDist << " mm" << endl << endl;
     }
 
     system("pause");
@@ -355,16 +359,16 @@ int main() {
 
 
 /**
- * toPoints3D 将齐次坐标转换为空间坐标
+ * toPoints3D 将齐次坐标转换为空间坐标。数据为float型（CV_32FC1）。
  * @param points4D [InputArray] 齐次坐标点，4xN
  * @param points3D [OutputArray] 空间坐标点
  */
 void toPoints3D(Mat& points4D, Mat& points3D) {
     points3D = Mat::zeros(3, points4D.size().width, CV_32FC1);
     for(int i = 0; i < points4D.size().width; i++) {
-        points3D.at<double>[0][i] = points4D.at<double>[0][i] / points4D.at<double>[3][i];
-        points3D.at<double>[1][i] = points4D.at<double>[1][i] / points4D.at<double>[3][i];
-        points3D.at<double>[2][i] = points4D.at<double>[2][i] / points4D.at<double>[3][i];
+        points3D.at<float>(0, i) = points4D.at<float>(0, i) / points4D.at<float>(3, i);
+        points3D.at<float>(1, i) = points4D.at<float>(1, i) / points4D.at<float>(3, i);
+        points3D.at<float>(2, i) = points4D.at<float>(2, i) / points4D.at<float>(3, i);
     }
 }
 
@@ -546,7 +550,7 @@ void reconstruct(Mat& K1, Mat& K2, Mat& R, Mat& T,
 
     Mat fK1, fK2;
     K1.convertTo(fK1, CV_32FC1);
-    K2.convertTo(fK1, CV_32FC1);
+    K2.convertTo(fK2, CV_32FC1);
     proj1 = fK1*proj1;
     proj2 = fK2*proj2;
 
@@ -631,7 +635,7 @@ void onMouseR(int event, int x, int y, int flags, void *param) {
  */
 void printCalibResults(Mat &cameraMatrix, Mat &distCoeffs, double reprojectionError,
                        Mat &stdDevIntrinsics, Mat &stdDevExtrinsics, vector<double> &perViewErrors) {
-    cout << endl << "标定结果：" << endl;
+    cout << "标定结果：" << endl;
     cout << "cameraMatrix = " << endl << cameraMatrix << endl << endl;
     cout << "distCoeffs = " << endl << distCoeffs << endl << endl;
     cout << "reprojectionError = " << endl << reprojectionError << endl << endl;
@@ -750,7 +754,7 @@ void printCalibResults(Mat &cameraMatrix, Mat &distCoeffs, double reprojectionEr
  */
 void printCalibResults(Mat &cameraMatrix, Mat &distCoeffs, 
                        double reprojectionError, Mat &stdDevIntrinsics) {
-    cout << endl << "标定结果：" << endl;
+    cout << "标定结果：" << endl;
     cout << "cameraMatrix = " << endl << cameraMatrix << endl << endl;
     cout << "distCoeffs = " << endl << distCoeffs << endl << endl;
     cout << "reprojectionError = " << endl << reprojectionError << endl << endl;
