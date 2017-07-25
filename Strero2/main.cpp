@@ -6,7 +6,7 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
-#include "main.h"
+#include "main.hpp"
 
 using namespace cv;
 using namespace std;
@@ -28,10 +28,12 @@ int main() {
     #define USING_BOARD_1
     // 显示角点提取结果
     bool showCornerExt = false;
-    // 进行单目标定
+    // 进行单目标定（true通过单目标定确定内参，false输入内参）
     bool doSingleCalib = true;
     // 进行双目标定
     bool doStereoCalib = false;
+    // 基线距离（规定以mm为单位）
+    double baselineDist = 583;
 
 #ifdef USING_BOARD_1
     // 标定板1：9x7，35mm，白色边缘
@@ -333,24 +335,23 @@ int main() {
     bool lFixed = fixPrinciplePoint(cameraMatrixL, ppIdeal);
     bool rFixed = fixPrinciplePoint(cameraMatrixR, ppIdeal);
     if(lFixed && rFixed) {
-        // 计算E、R、t
+        // 计算E，分解出R、t
         bool foundE = findTransform(cameraMatrixL, cameraMatrixR, R, T, 
                                     allCornersL[0], allCornersR[0], mask);
         // 去除不匹配点对
         maskoutPoints(allCornersL[0], mask);
         maskoutPoints(allCornersR[0], mask);
         // 重建坐标
+        T *= baselineDist;
         reconstruct(cameraMatrixL, cameraMatrixR, R, T, 
                     allCornersL[0], allCornersR[0], structure);
-        
-        // 计算距离（取棋盘格第一个点）
         toPoints3D(structure, structure3D);
-        // 左目
+        
+        // 世界坐标（左目）深度
         lDist = sqrt(structure3D.at<float>(0, 0) * structure3D.at<float>(0, 0) +
-                     structure3D.at<float>(0, 1) * structure3D.at<float>(0, 1) +
-                     structure3D.at<float>(0, 2) * structure3D.at<float>(0, 2));
-
-        cout << "测距点深度 " << lDist << " mm" << endl << endl;
+                     structure3D.at<float>(1, 0) * structure3D.at<float>(1, 0) +
+                     structure3D.at<float>(2, 0) * structure3D.at<float>(2, 0));
+        cout << "测距点深度 " << lDist / 1000 << " m" << endl << endl;
     }
 
     system("pause");
@@ -556,6 +557,49 @@ void reconstruct(Mat& K1, Mat& K2, Mat& R, Mat& T,
 
     // 三角重建
     triangulatePoints(proj1, proj2, p1, p2, structure);
+}
+
+
+/**
+* 三角化重建空间点（内参数使用相同矩阵）
+* @param K     [InputArray] 内参数矩阵
+* @param R1    [InputArray] camera1 对世界坐标系的旋转矩阵
+* @param T1    [InputArray] camera1 对世界坐标系的平移向量
+* @param R2    [InputArray] camera2 对世界坐标系的旋转矩阵
+* @param T2    [InputArray] camera2 对世界坐标系的平移向量
+* @param p1    [InputArray] 同名点对在 camera1 图像上的点坐标
+* @param p2    [InputArray] 同名点对在 camera2 图像上的点坐标
+* @param structure [OutputArray] 重建出的空间点（空间坐标）
+*/
+void reconstruct(Mat& K, Mat& R1, Mat& T1, Mat& R2, Mat& T2,
+                 vector<Point2f>& p1, vector<Point2f>& p2, vector<Point3f>& structure) {
+    //两个相机的投影矩阵（单应性矩阵）K[R T]，triangulatePoints只支持float型
+    Mat proj1(3, 4, CV_32FC1);
+    Mat proj2(3, 4, CV_32FC1);
+
+    R1.convertTo(proj1(Range(0, 3), Range(0, 3)), CV_32FC1);
+    T1.convertTo(proj1.col(3), CV_32FC1);
+
+    R2.convertTo(proj2(Range(0, 3), Range(0, 3)), CV_32FC1);
+    T2.convertTo(proj2.col(3), CV_32FC1);
+
+    Mat fK;
+    K.convertTo(fK, CV_32FC1);
+    proj1 = fK*proj1;
+    proj2 = fK*proj2;
+
+    //三角重建
+    Mat structure4D;
+    triangulatePoints(proj1, proj2, p1, p2, structure4D);
+
+    structure.clear();
+    structure.reserve(structure4D.cols);
+    for(int i = 0; i < structure4D.cols; ++i) {
+        //齐次坐标，除以最后一个元素转为空间坐标
+        Mat_<float> col = structure4D.col(i);
+        col /= col(3);
+        structure.push_back(Point3f(col(0), col(1), col(2)));
+    }
 }
 
 
