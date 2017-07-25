@@ -33,7 +33,7 @@ int main() {
     // 进行双目标定
     bool doStereoCalib = false;
     // 基线距离（规定以mm为单位）
-    double baselineDist = 583;
+    double baselineDist = 100;
 
 #ifdef USING_BOARD_1
     // 标定板1：9x7，35mm，白色边缘
@@ -337,21 +337,23 @@ int main() {
     if(lFixed && rFixed) {
         // 计算E，分解出R、t
         bool foundE = findTransform(cameraMatrixL, cameraMatrixR, R, T, 
-                                    allCornersL[0], allCornersR[0], mask);
+                                    allCornersL[2], allCornersR[2], mask);
         // 去除不匹配点对
-        maskoutPoints(allCornersL[0], mask);
-        maskoutPoints(allCornersR[0], mask);
+        maskoutPoints(allCornersL[2], mask);
+        maskoutPoints(allCornersR[2], mask);
         // 重建坐标
         T *= baselineDist;
         reconstruct(cameraMatrixL, cameraMatrixR, R, T, 
-                    allCornersL[0], allCornersR[0], structure);
+                    allCornersL[2], allCornersR[2], structure);
         toPoints3D(structure, structure3D);
         
         // 世界坐标（左目）深度
-        lDist = sqrt(structure3D.at<float>(0, 0) * structure3D.at<float>(0, 0) +
-                     structure3D.at<float>(1, 0) * structure3D.at<float>(1, 0) +
-                     structure3D.at<float>(2, 0) * structure3D.at<float>(2, 0));
-        cout << "测距点深度 " << lDist / 1000 << " m" << endl << endl;
+        for(int i = 0; i < structure3D.size().width; i++) {
+            lDist = sqrt(structure3D.at<float>(0, i) * structure3D.at<float>(0, i) +
+                         structure3D.at<float>(1, i) * structure3D.at<float>(1, i) +
+                         structure3D.at<float>(2, i) * structure3D.at<float>(2, i));
+            cout << "测距点深度 " << lDist / 1000 << " m" << endl;
+        }
     }
 
     system("pause");
