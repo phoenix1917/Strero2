@@ -33,4 +33,7 @@ string num2str(int num);
 void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>& corners);
 double computeReprojectionErrors(vector<vector<Point3f> >& objectPoints, vector<vector<Point2f> >& imagePoints, vector<Mat>& rvecs, vector<Mat>& tvecs, Mat& cameraMatrix, Mat& distCoeffs, vector<float>& perViewErrors);
 
+void usingBoard(int boardNum, Size& boardSize, float& squareSize);
+void saveStructure(string fileName, vector<Mat>& rotations, vector<Mat>& motions, vector<Point3f>& structure, vector<Vec3b>& colors);
+
 #endif
