@@ -17,11 +17,11 @@ void onMouseL(int event, int x, int y, int flags, void *param);
 void onMouseL_ROI(int event, int x, int y, int flags, void *param);
 void onMouseR(int event, int x, int y, int flags, void *param);
 void onMouseR_ROI(int event, int x, int y, int flags, void *param);
+void getROI(Mat& img, Point center, Size roiSize, Rect& roi, Mat& roiImg);
+string num2str(int num);
 
 void printCalibResults(Mat &cameraMatrix, Mat &distCoeffs, double reprojectionError, Mat &stdDevIntrinsics, Mat &stdDevExtrinsics, vector<double> &perViewErrors);
 void printCalibResults(Mat &cameraMatrix, Mat &distCoeffs, double reprojectionError, Mat &stdDevIntrinsics, Mat &stdDevExtrinsics, vector<double> &perViewErrors, ofstream &fout);
 void printCalibResults(Mat &cameraMatrix, Mat &distCoeffs, double reprojectionError, Mat &stdDevIntrinsics);
 void printCalibResults(Mat &cameraMatrix, Mat &distCoeffs, double reprojectionError);
-
-string num2str(int num);
 

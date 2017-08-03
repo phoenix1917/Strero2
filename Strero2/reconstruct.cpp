@@ -17,13 +17,13 @@ using namespace std;
 
 /**
  * usingBoard：定义所使用的标定板
- * @param boardNum      [Input]标定板编号
+ * @param boardNum   [Input]标定板编号
  *                      标定板1：9x7，35mm，白色边缘
  *                      标定板2：12x9，30mm，黑色边缘
  *                      标定板3：10x9，90mm，白色边缘
  *                      标定板4：13x9，30mm，白色边缘
- * @param boardSize     [Output]返回标定板棋盘格内角点数目
- * @param squareSize    [Output]返回标定板方格边长
+ * @param boardSize  [Output]返回标定板棋盘格内角点数目
+ * @param squareSize [Output]返回标定板方格边长
  */
 void usingBoard(int boardNum, Size& boardSize, float& squareSize) {
     switch(boardNum) {
@@ -52,9 +52,9 @@ void usingBoard(int boardNum, Size& boardSize, float& squareSize) {
 
 /**
  * 计算标定板角点位置
- * @param boardSize
- * @param squareSize
- * @param corners
+ * @param boardSize  [input]标定板内角点size
+ * @param squareSize [input]标定板方格边长
+ * @param corners    [output]返回的角点标称位置
  */
 void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>& corners) {
     for(int i = 0; i < boardSize.height; ++i) {
@@ -67,13 +67,13 @@ void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>&
 
 /**
  * 计算投影误差
- * @param objectPoints
- * @param imagePoints
- * @param rvecs
- * @param tvecs
- * @param cameraMatrix
- * @param distCoeffs
- * @param perViewErrors
+ * @param objectPoints  
+ * @param imagePoints   
+ * @param rvecs         
+ * @param tvecs         
+ * @param cameraMatrix  
+ * @param distCoeffs    
+ * @param perViewErrors 
  */
 double computeReprojectionErrors(vector<vector<Point3f> >& objectPoints,
                                  vector<vector<Point2f> >& imagePoints,
@@ -101,9 +101,9 @@ double computeReprojectionErrors(vector<vector<Point3f> >& objectPoints,
 
 /**
  * 固定主点坐标到指定值
- * @param K      [InputOutputArray] 内参数矩阵(CV_64FC1)
- * @param point  [InputArray] 要固定的主点坐标位置
- * @return       是否成功操作
+ * @param K     [InputOutputArray] 内参数矩阵(CV_64FC1)
+ * @param point [InputArray] 要固定的主点坐标位置
+ * @return      是否成功操作
  */
 bool fixPrinciplePoint(Mat& K, Point2f point) {
     if(K.size() == Size(3, 3)) {
@@ -118,78 +118,128 @@ bool fixPrinciplePoint(Mat& K, Point2f point) {
 
 
 /**
-* extractFeatures SIFT提取特征
-* @param image_names
-* @param key_points_for_all
-* @param descriptor_for_all
-* @param colors_for_all
-*/
-void extractFeatures(vector<string>& image_names,
-                     vector<vector<KeyPoint>>& key_points_for_all,
-                     vector<Mat>& descriptor_for_all,
-                     vector<vector<Vec3b>>& colors_for_all) {
-    key_points_for_all.clear();
-    descriptor_for_all.clear();
+ * extractFeatures 对图像列表提取SIFT特征
+ * @param imageNames     [input]图像名称列表
+ * @param keyPoints4All  [output]所有图像特征点位置列表
+ * @param descriptor4All [output]所有图像特征描述子列表
+ * @param colors4All     [output]所有图像特征点像素列表
+ */
+void extractFeatures(vector<string>& imageNames,
+                     vector<vector<KeyPoint>>& keyPoints4All,
+                     vector<Mat>& descriptor4All,
+                     vector<vector<Vec3b>>& colors4All) {
+    keyPoints4All.clear();
+    descriptor4All.clear();
+    colors4All.clear();
     Mat image;
 
-    //读取图像，获取图像特征点，并保存
+    // 读取图像，获取图像特征点，并保存
     Ptr<Feature2D> sift = xfeatures2d::SIFT::create(0, 3, 0.04, 10);
-    for(auto it = image_names.begin(); it != image_names.end(); ++it) {
-        image = imread(*it);
-        if(image.empty()) continue;
 
-        vector<KeyPoint> key_points;
+    for(auto it = imageNames.begin(); it != imageNames.end(); ++it) {
+        vector<KeyPoint> keyPoints;
         Mat descriptor;
-        //偶尔出现内存分配失败的错误
-        sift->detectAndCompute(image, noArray(), key_points, descriptor);
+        vector<Vec3b> colors(keyPoints.size());
 
-        //特征点过少，则排除该图像
-        if(key_points.size() <= 10) continue;
-
-        key_points_for_all.push_back(key_points);
-        descriptor_for_all.push_back(descriptor);
-
-        vector<Vec3b> colors(key_points.size());
-        for(int i = 0; i < key_points.size(); ++i) {
-            Point2f& p = key_points[i].pt;
+        image = imread(*it);
+        if(image.empty()) {
+            continue;
+        }
+        // 偶尔出现内存分配失败的错误
+        sift->detectAndCompute(image, noArray(), keyPoints, descriptor);
+        // 特征点过少，则排除该图像
+        if(keyPoints.size() <= 10) {
+            continue;
+        }
+        for(int i = 0; i < keyPoints.size(); ++i) {
+            Point2f& p = keyPoints[i].pt;
             colors[i] = image.at<Vec3b>(p.y, p.x);
         }
-        colors_for_all.push_back(colors);
+
+        keyPoints4All.push_back(keyPoints);
+        descriptor4All.push_back(descriptor);
+        colors4All.push_back(colors);
     }
 }
 
 
 /**
-* matchFeatures 特征匹配
-* @param query
-* @param train
-* @param matches
+* extractFeatures 对图像列表提取SIFT特征
+* @param images         [input]图像列表
+* @param keyPoints4All  [output]所有图像特征点位置列表
+* @param descriptor4All [output]所有图像特征描述子列表
+* @param colors4All     [output]所有图像特征点像素列表
 */
-void matchFeatures(Mat& query, Mat& train, vector<DMatch>& matches) {
-    vector<vector<DMatch> > knn_matches;
-    BFMatcher matcher(NORM_L2);
-    matcher.knnMatch(query, train, knn_matches, 2);
+void extractFeatures(vector<Mat>& images,
+                     vector<vector<KeyPoint>>& keyPoints4All,
+                     vector<Mat>& descriptor4All,
+                     vector<vector<Vec3b>>& colors4All) {
+    keyPoints4All.clear();
+    descriptor4All.clear();
+    colors4All.clear();
+    Mat image;
 
-    //获取满足Ratio Test的最小匹配的距离
-    float min_dist = FLT_MAX;
-    for(int r = 0; r < knn_matches.size(); ++r) {
-        //Ratio Test
-        if(knn_matches[r][0].distance > 0.6 * knn_matches[r][1].distance) {
+    // 读取图像，获取图像特征点，并保存
+    Ptr<Feature2D> sift = xfeatures2d::SIFT::create(0, 3, 0.04, 10);
+
+    for(auto it = images.begin(); it != images.end(); ++it) {
+        vector<KeyPoint> keyPoints;
+        Mat descriptor;
+
+        image = *it;
+        // 偶尔出现内存分配失败的错误
+        sift->detectAndCompute(image, noArray(), keyPoints, descriptor);
+        // 特征点过少，则排除该图像
+        if(keyPoints.size() <= 10) {
             continue;
         }
-        float dist = knn_matches[r][0].distance;
-        if(dist < min_dist) min_dist = dist;
+
+        vector<Vec3b> colors(keyPoints.size());
+        for(int i = 0; i < keyPoints.size(); ++i) {
+            Point2f& p = keyPoints[i].pt;
+            colors[i] = image.at<Vec3b>(p.y, p.x);
+        }
+
+        keyPoints4All.push_back(keyPoints);
+        descriptor4All.push_back(descriptor);
+        colors4All.push_back(colors);
+    }
+}
+
+
+/**
+ * matchFeatures 特征匹配
+ * @param query   图像1特征点的特征描述
+ * @param train   图像2特征点的特征描述
+ * @param matches 匹配点对
+ */
+void matchFeatures(Mat& query, Mat& train, vector<DMatch>& matches) {
+    vector<vector<DMatch> > knnMatches;
+    BFMatcher matcher(NORM_L2);
+    matcher.knnMatch(query, train, knnMatches, 2);
+
+    //获取满足Ratio Test的最小匹配的距离
+    float minDist = FLT_MAX;
+    for(int r = 0; r < knnMatches.size(); ++r) {
+        //Ratio Test
+        if(knnMatches[r][0].distance > 0.6 * knnMatches[r][1].distance) {
+            continue;
+        }
+        float dist = knnMatches[r][0].distance;
+        if(dist < minDist) {
+            minDist = dist;
+        }
     }
 
     matches.clear();
-    for(size_t r = 0; r < knn_matches.size(); ++r) {
+    for(size_t r = 0; r < knnMatches.size(); ++r) {
         //排除不满足Ratio Test的点和匹配距离过大的点
-        if(knn_matches[r][0].distance > 0.6 * knn_matches[r][1].distance ||
-           knn_matches[r][0].distance > 5 * max(min_dist, 10.0f)) {
+        if(knnMatches[r][0].distance > 0.6 * knnMatches[r][1].distance ||
+           knnMatches[r][0].distance > 5 * max(minDist, 10.0f)) {
             continue;
         }
         //保存匹配点
-        matches.push_back(knn_matches[r][0]);
+        matches.push_back(knnMatches[r][0]);
     }
 }
 
@@ -235,12 +285,12 @@ void getMatchedColors(vector<Vec3b>& c1, vector<Vec3b>& c2, vector<DMatch> match
 
 /**
  * 求本征矩阵，并分解出相机双目外参（位姿关系）（内参数使用相同矩阵）
- * @param K     [InputArray] 内参数矩阵
- * @param R     [OutputArray] camera2 对 camera1 的旋转矩阵
- * @param T     [OutputArray] camera2 对 camera1 的平移向量
- * @param p1    [InputArray] 同名点对在 camera1 图像上的点坐标
- * @param p2    [InputArray] 同名点对在 camera2 图像上的点坐标
- * @param mask  [InputOutputArray] 匹配点对flag，接受的匹配点（inliers）返回正值
+ * @param K    [InputArray] 内参数矩阵
+ * @param R    [OutputArray] camera2 对 camera1 的旋转矩阵
+ * @param T    [OutputArray] camera2 对 camera1 的平移向量
+ * @param p1   [InputArray] 同名点对在 camera1 图像上的点坐标
+ * @param p2   [InputArray] 同名点对在 camera2 图像上的点坐标
+ * @param mask [InputOutputArray] 匹配点对flag，接受的匹配点（inliers）返回正值
  */
 bool findTransform(Mat& K, Mat& R, Mat& T,
                    vector<Point2f>& p1, vector<Point2f>& p2, Mat& mask) {
@@ -275,13 +325,13 @@ bool findTransform(Mat& K, Mat& R, Mat& T,
 
 /**
  * 求本征矩阵，并分解出相机双目外参（位姿关系）（内参数使用不同矩阵）
- * @param K1    [InputArray] camera1 内参数矩阵
- * @param K2    [InputArray] camera2 内参数矩阵
- * @param R     [OutputArray] camera2 对 camera1 的旋转矩阵
- * @param T     [OutputArray] camera2 对 camera1 的平移向量
- * @param p1    [InputArray] 同名点对在 camera1 图像上的点坐标
- * @param p2    [InputArray] 同名点对在 camera2 图像上的点坐标
- * @param mask  [InputOutputArray] 匹配点对flag，接受的匹配点（inliers）返回正值
+ * @param K1   [InputArray] camera1 内参数矩阵
+ * @param K2   [InputArray] camera2 内参数矩阵
+ * @param R    [OutputArray] camera2 对 camera1 的旋转矩阵
+ * @param T    [OutputArray] camera2 对 camera1 的平移向量
+ * @param p1   [InputArray] 同名点对在 camera1 图像上的点坐标
+ * @param p2   [InputArray] 同名点对在 camera2 图像上的点坐标
+ * @param mask [InputOutputArray] 匹配点对flag，接受的匹配点（inliers）返回正值
  */
 bool findTransform(Mat& K1, Mat& K2, Mat& R, Mat& T,
                    vector<Point2f>& p1, vector<Point2f>& p2, Mat& mask) {
@@ -318,8 +368,8 @@ bool findTransform(Mat& K1, Mat& K2, Mat& R, Mat& T,
 
 /**
  * 去除不匹配点对（位置）
- * @param p1    [InputOutputArray]
- * @param mask  [InputArray]
+ * @param p1   [InputOutputArray]
+ * @param mask [InputArray]
  */
 void maskoutPoints(vector<Point2f>& p1, Mat& mask) {
     vector<Point2f> p1_copy = p1;
@@ -335,8 +385,8 @@ void maskoutPoints(vector<Point2f>& p1, Mat& mask) {
 
 /**
  * 去除不匹配点对（像素值）
- * @param p1    [InputOutputArray]
- * @param mask  [InputArray]
+ * @param p1   [InputOutputArray]
+ * @param mask [InputArray]
  */
 void maskoutColors(vector<Vec3b>& p1, Mat& mask) {
     vector<Vec3b> p1_copy = p1;
@@ -352,11 +402,11 @@ void maskoutColors(vector<Vec3b>& p1, Mat& mask) {
 
 /**
  * 三角化重建空间点（内参数使用相同矩阵）
- * @param K     [InputArray] 内参数矩阵
- * @param R     [InputArray] camera2 对 camera1 的旋转矩阵
- * @param T     [InputArray] camera2 对 camera1 的平移向量
- * @param p1    [InputArray] 同名点对在 camera1 图像上的点坐标
- * @param p2    [InputArray] 同名点对在 camera2 图像上的点坐标
+ * @param K  [InputArray] 内参数矩阵
+ * @param R  [InputArray] camera2 对 camera1 的旋转矩阵
+ * @param T  [InputArray] camera2 对 camera1 的平移向量
+ * @param p1 [InputArray] 同名点对在 camera1 图像上的点坐标
+ * @param p2 [InputArray] 同名点对在 camera2 图像上的点坐标
  * @param structure [OutputArray] 重建出的空间点（齐次坐标）
  */
 void reconstruct(Mat& K, Mat& R, Mat& T,
@@ -385,12 +435,12 @@ void reconstruct(Mat& K, Mat& R, Mat& T,
 
 /**
  * 三角化重建空间点（内参数使用不同矩阵）
- * @param K1    [InputArray] camera1 内参数矩阵
- * @param K2    [InputArray] camera2 内参数矩阵
- * @param R     [InputArray] camera2 对 camera1 的旋转矩阵
- * @param T     [InputArray] camera2 对 camera1 的平移向量
- * @param p1    [InputArray] 同名点对在 camera1 图像上的点坐标
- * @param p2    [InputArray] 同名点对在 camera2 图像上的点坐标
+ * @param K1 [InputArray] camera1 内参数矩阵
+ * @param K2 [InputArray] camera2 内参数矩阵
+ * @param R  [InputArray] camera2 对 camera1 的旋转矩阵
+ * @param T  [InputArray] camera2 对 camera1 的平移向量
+ * @param p1 [InputArray] 同名点对在 camera1 图像上的点坐标
+ * @param p2 [InputArray] 同名点对在 camera2 图像上的点坐标
  * @param structure [OutputArray] 重建出的空间点（齐次坐标）
  */
 void reconstruct(Mat& K1, Mat& K2, Mat& R, Mat& T,
@@ -420,13 +470,13 @@ void reconstruct(Mat& K1, Mat& K2, Mat& R, Mat& T,
 
 /**
  * 三角化重建空间点（内参数使用相同矩阵）
- * @param K     [InputArray] 内参数矩阵
- * @param R1    [InputArray] camera1 对世界坐标系的旋转矩阵
- * @param T1    [InputArray] camera1 对世界坐标系的平移向量
- * @param R2    [InputArray] camera2 对世界坐标系的旋转矩阵
- * @param T2    [InputArray] camera2 对世界坐标系的平移向量
- * @param p1    [InputArray] 同名点对在 camera1 图像上的点坐标
- * @param p2    [InputArray] 同名点对在 camera2 图像上的点坐标
+ * @param K  [InputArray] 内参数矩阵
+ * @param R1 [InputArray] camera1 对世界坐标系的旋转矩阵
+ * @param T1 [InputArray] camera1 对世界坐标系的平移向量
+ * @param R2 [InputArray] camera2 对世界坐标系的旋转矩阵
+ * @param T2 [InputArray] camera2 对世界坐标系的平移向量
+ * @param p1 [InputArray] 同名点对在 camera1 图像上的点坐标
+ * @param p2 [InputArray] 同名点对在 camera2 图像上的点坐标
  * @param structure [OutputArray] 重建出的空间点（空间坐标）
  */
 void reconstruct(Mat& K, Mat& R1, Mat& T1, Mat& R2, Mat& T2,
@@ -478,11 +528,11 @@ void toPoints3D(Mat& points4D, Mat& points3D) {
 
 /**
  * saveStructure 保存相机位姿和点云坐标到文件
- * @param fileName
- * @param rotations
- * @param motions
- * @param structure
- * @param colors
+ * @param fileName  
+ * @param rotations 
+ * @param motions   
+ * @param structure 
+ * @param colors    
  */
 void saveStructure(string fileName, vector<Mat>& rotations,
                    vector<Mat>& motions, vector<Point3f>& structure,

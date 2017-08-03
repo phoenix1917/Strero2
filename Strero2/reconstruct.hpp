@@ -19,6 +19,7 @@ double computeReprojectionErrors(vector<vector<Point3f> >& objectPoints, vector<
 
 bool fixPrinciplePoint(Mat& K, Point2f point);
 void extractFeatures(vector<string>& image_names, vector<vector<KeyPoint>>& key_points_for_all, vector<Mat>& descriptor_for_all, vector<vector<Vec3b>>& colors_for_all);
+void extractFeatures(vector<Mat>& images, vector<vector<KeyPoint>>& keyPoints4All, vector<Mat>& descriptor4All, vector<vector<Vec3b>>& colors4All);
 void matchFeatures(Mat& query, Mat& train, vector<DMatch>& matches);
 void getMatchedPoints(vector<KeyPoint>& p1, vector<KeyPoint>& p2, vector<DMatch> matches, vector<Point2f>& out_p1, vector<Point2f>& out_p2);
 void getMatchedColors(vector<Vec3b>& c1, vector<Vec3b>& c2, vector<DMatch> matches, vector<Vec3b>& out_c1, vector<Vec3b>& out_c2);
