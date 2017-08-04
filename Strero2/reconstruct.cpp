@@ -139,18 +139,21 @@ void extractFeatures(vector<string>& imageNames,
     for(auto it = imageNames.begin(); it != imageNames.end(); ++it) {
         vector<KeyPoint> keyPoints;
         Mat descriptor;
-        vector<Vec3b> colors(keyPoints.size());
-
+        
         image = imread(*it);
         if(image.empty()) {
             continue;
         }
+
         // 偶尔出现内存分配失败的错误
         sift->detectAndCompute(image, noArray(), keyPoints, descriptor);
-        // 特征点过少，则排除该图像
-        if(keyPoints.size() <= 10) {
-            continue;
-        }
+        //// 特征点过少，则排除该图像
+        //if(keyPoints.size() <= 10) {
+        //    continue;
+        //}
+
+        // 根据特征点位置获取像素值
+        vector<Vec3b> colors(keyPoints.size());
         for(int i = 0; i < keyPoints.size(); ++i) {
             Point2f& p = keyPoints[i].pt;
             colors[i] = image.at<Vec3b>(p.y, p.x);
@@ -160,6 +163,14 @@ void extractFeatures(vector<string>& imageNames,
         descriptor4All.push_back(descriptor);
         colors4All.push_back(colors);
     }
+
+    //// 若所有图像都没有提出足够多的特征点，则将返回的列表赋为图像列表的长度
+    //if(keyPoints4All.size() == 0) {
+    //    int size = imageNames.size();
+    //    keyPoints4All.resize(size);
+    //    descriptor4All.resize(size);
+    //    colors4All.resize(size);
+    //}
 }
 
 
@@ -189,11 +200,12 @@ void extractFeatures(vector<Mat>& images,
         image = *it;
         // 偶尔出现内存分配失败的错误
         sift->detectAndCompute(image, noArray(), keyPoints, descriptor);
-        // 特征点过少，则排除该图像
-        if(keyPoints.size() <= 10) {
-            continue;
-        }
+        //// 特征点过少，则排除该图像
+        //if(keyPoints.size() <= 10) {
+        //    continue;
+        //}
 
+        // 根据特征点位置获取像素值
         vector<Vec3b> colors(keyPoints.size());
         for(int i = 0; i < keyPoints.size(); ++i) {
             Point2f& p = keyPoints[i].pt;
@@ -204,6 +216,14 @@ void extractFeatures(vector<Mat>& images,
         descriptor4All.push_back(descriptor);
         colors4All.push_back(colors);
     }
+
+    //// 若所有图像都没有提出足够多的特征点，则将返回的列表赋为图像列表的长度
+    //if(keyPoints4All.size() == 0) {
+    //    int size = imageNames.size();
+    //    keyPoints4All.resize(size);
+    //    descriptor4All.resize(size);
+    //    colors4All.resize(size);
+    //}
 }
 
 

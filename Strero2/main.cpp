@@ -17,7 +17,7 @@ using namespace std;
 // 显示角点提取结果
 bool showCornerExt = false;
 // 进行单目标定（true通过单目标定确定内参，false输入内参）
-bool doSingleCalib = true;
+bool doSingleCalib = false;
 // 测距方式（true通过双目标定确定外参，false通过特征提取获得匹配点计算位姿）
 bool doStereoCalib = true;
 // 手动选点（用于双目标定方式，true手动选点，false选择ROI中心进行局部特征提取）
@@ -25,7 +25,7 @@ bool manualPoints = false;
 // 基线距离（用于特征提取方式，规定以mm为单位）
 double baselineDist = 1;
 // ROI大小（横向半径，纵向半径）
-Size roiSize = Size(40, 40);
+Size roiSize = Size(30, 40);
 
 // 读入的测距图像序列
 vector<Mat> rangingSetL, rangingSetR;
@@ -44,15 +44,15 @@ int main() {
     // 定义所使用的标定板
     usingBoard(3, boardSize, squareSize);
     // 加载标定所用图像文件的路径
-    ifstream finL("calibdata4_L.txt");
-    ifstream finR("calibdata4_R.txt");
+    ifstream finL("calibdata5_L.txt");
+    ifstream finR("calibdata5_R.txt");
     // 加载测距所用的图像文件路径
-    ifstream finRangingL("ranging4_L.txt");
-    ifstream finRangingR("ranging4_R.txt");
+    ifstream finRangingL("ranging5_L.txt");
+    ifstream finRangingR("ranging5_R.txt");
     // 保存标定结果的文件
-    ofstream foutL("calibration_result4_L.txt");
-    ofstream foutR("calibration_result4_R.txt");
-    ofstream foutStereo("stereo_result4.txt");
+    ofstream foutL("calibration_result5_L.txt");
+    ofstream foutR("calibration_result5_R.txt");
+    ofstream foutStereo("stereo_result5.txt");
 
     // 每行读入的图像路径
     string fileName;
@@ -390,6 +390,10 @@ int main() {
                 getMatchedPoints(keyPoints4All[0], keyPoints4All[1], matches, objectPointsL, objectPointsR);
                 getMatchedColors(colors4All[0], colors4All[1], matches, objectColorsL, objectColorsR);
                 // 将ROI坐标恢复到原图像中
+                if(objectPointsL.size() == 0) {
+                    cout << "没有找到匹配点" << endl;
+                    continue;
+                }
                 for(int i = 0; i < objectPointsL.size(); i++) {
                     objectPointsL[i] += Point2f(roiL.x, roiL.y);
                     objectPointsR[i] += Point2f(roiR.x, roiR.y);
