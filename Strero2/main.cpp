@@ -23,7 +23,7 @@ bool doStereoCalib = true;
 // 手动选点（用于双目标定方式，true手动选点，false选择ROI中心进行局部特征提取）
 bool manualPoints = false;
 // 基线距离（用于特征提取方式，规定以mm为单位）
-double baselineDist = 1;
+double baselineDist = 1420;
 // ROI大小（横向半径，纵向半径）
 Size roiSize = Size(30, 40);
 
@@ -38,7 +38,7 @@ Mat roiImgL, roiImgR;
 // 使用的标定板棋盘格内角点的个数
 Size boardSize;
 // 标定板上每个方格的大小
-float squareSize;
+float squareSize; 
 
 int main() {
     // 定义所使用的标定板
@@ -47,8 +47,8 @@ int main() {
     ifstream finL("calibdata5_L.txt");
     ifstream finR("calibdata5_R.txt");
     // 加载测距所用的图像文件路径
-    ifstream finRangingL("ranging5_L.txt");
-    ifstream finRangingR("ranging5_R.txt");
+    ifstream finRangingL("ranging5-2_L.txt");
+    ifstream finRangingR("ranging5-2_R.txt");
     // 保存标定结果的文件
     ofstream foutL("calibration_result5_L.txt");
     ofstream foutR("calibration_result5_R.txt");
@@ -67,9 +67,9 @@ int main() {
     // 找到全部角点的图像编号
     vector<int> acceptedImages;
     // 每幅图像使用的标定板的角点的三维坐标
-    vector<vector<Point3f> > objectPoints(1);
+    vector<vector<Point3f>> objectPoints(1);
     // 所有标定图像的角点
-    vector<vector<Point2f> > allCornersL, allCornersR;
+    vector<vector<Point2f>> allCornersL, allCornersR;
     // 内参数矩阵和畸变系数
     Mat cameraMatrixL = Mat::eye(3, 3, CV_64F);
     Mat distCoeffsL = Mat::zeros(5, 1, CV_64F);
@@ -278,10 +278,21 @@ int main() {
     Point ppIdeal = Point(imageSize.width / 2, imageSize.height / 2);
     // 匹配点对flag, 重建出的世界坐标系坐标（齐次）
     Mat mask, structure, structure3D;
-    // 空间点对左右目摄像机坐标系的范数
-    double lDist, rDist;
-    // 摄像机间的距离，测距点深度
-    double oDist, dist;
+    // 测距点中位线距离
+    vector<double> dist;
+
+    // 读取左目测距图像
+    while(getline(finRangingL, fileName)) {
+        Mat img = imread(fileName);
+        rangingSetL.push_back(img);
+    }
+    rangingImgSize = rangingSetL[0].size();
+    rangingImgCount = rangingSetL.size();
+    // 读取右目测距图像
+    while(getline(finRangingR, fileName)) {
+        Mat img = imread(fileName);
+        rangingSetR.push_back(img);
+    }
 
     if(doStereoCalib) {
         // 立体标定
@@ -307,7 +318,6 @@ int main() {
                                                    CALIB_FIX_PRINCIPAL_POINT,
                                                    TermCriteria(TermCriteria::COUNT + 
                                                                 TermCriteria::EPS, 40, 1e-5));
-        
         // 输出双目标定结果
         cout << "双目标定结果：" << endl;
         cout << "R = " << endl << R << endl;
@@ -319,30 +329,12 @@ int main() {
         foutStereo << "t = " << endl << T << endl;
         foutStereo << "E = " << endl << E << endl;
         foutStereo << "F = " << endl << F << endl;
-
-        // 读取左目图像
-        while(getline(finRangingL, fileName)) {
-            Mat img = imread(fileName);
-            rangingSetL.push_back(img);
-        }
-        rangingImgSize = rangingSetL[0].size();
-        rangingImgCount = rangingSetL.size();
-        // 读取右目图像
-        while(getline(finRangingR, fileName)) {
-            Mat img = imread(fileName);
-            rangingSetR.push_back(img);
-        }
         namedWindow("Ranging_leftcam");
         namedWindow("Ranging_rightcam");
-
-        //// 固定主点坐标
-        //bool lFixed = fixPrinciplePoint(cameraMatrixL, ppIdeal);
-        //bool rFixed = fixPrinciplePoint(cameraMatrixR, ppIdeal);
 
         for(int i = 0; i < rangingImgCount; i++) {
             imshow("Ranging_leftcam", rangingSetL[i]);
             imshow("Ranging_rightcam", rangingSetR[i]);
-
             if(manualPoints) {
                 // 逐图像选取同名点
                 targetL = Point(0, 0);
@@ -362,11 +354,9 @@ int main() {
                 reconstruct(cameraMatrixL, cameraMatrixR, R, T,
                             objectPointsL, objectPointsR, structure);
                 toPoints3D(structure, structure3D);
-                // 世界坐标（左目）深度
-                lDist = sqrt(structure3D.at<float>(0, 0) * structure3D.at<float>(0, 0) +
-                             structure3D.at<float>(1, 0) * structure3D.at<float>(1, 0) +
-                             structure3D.at<float>(2, 0) * structure3D.at<float>(2, 0));
-                cout << "测距点深度 " << lDist / 1000 << " m" << endl << endl;
+                // 中位线距离
+                dist = ranging(structure3D, R, T);
+                cout << "测距点深度 " << dist[0] << " m" << endl << endl;
                 cout << "------------------------------------------" << endl << endl;
             } else {
                 // 逐图像选取ROI
@@ -402,51 +392,70 @@ int main() {
                 reconstruct(cameraMatrixL, cameraMatrixR, R, T,
                             objectPointsL, objectPointsR, structure);
                 toPoints3D(structure, structure3D);
-                // 世界坐标（左目）深度
-                for(int i = 0; i < structure3D.size().width; i++) {
-                    lDist = sqrt(structure3D.at<float>(0, i) * structure3D.at<float>(0, i) +
-                                 structure3D.at<float>(1, i) * structure3D.at<float>(1, i) +
-                                 structure3D.at<float>(2, i) * structure3D.at<float>(2, i));
-                    cout << "测距点深度 " << lDist / 1000 << " m" << endl;
+                // 中位线距离
+                dist = ranging(structure3D, R, T);
+                for(auto iter = dist.cbegin(); iter < dist.cend(); ++iter) {
+                    cout << "测距点深度 " << *iter << " m" << endl;
                 }
                 cout << endl;
             }
         }
     } else {
-        // 固定主点坐标
-        bool lFixed = fixPrinciplePoint(cameraMatrixL, ppIdeal);
-        bool rFixed = fixPrinciplePoint(cameraMatrixR, ppIdeal);
+        // 基于重建的方式
+        for(int i = 0; i < rangingImgCount; i++) {
+            vector<vector<KeyPoint>> keyPoints4All;
+            vector<Mat> descriptor4All;
+            vector<vector<Vec3b>> colors4All;
+            vector<DMatch> matches;
+            vector<Mat> rois = { rangingSetL[i], rangingSetR[i] };
+            Mat matchImg;
 
-        // 匹配特征点对
+            cout << "第" << i + 1 << "组图像：" << endl;
 
+            // 全图特征匹配
+            extractFeatures(rois, keyPoints4All, descriptor4All, colors4All);
+            matchFeatures(descriptor4All[0], descriptor4All[1], matches);
+            // 绘制匹配图
+            if(i != 0) {
+                destroyWindow("matches" + num2str(i));
+            }
+            drawMatches(rangingSetL[i], keyPoints4All[0],
+                        rangingSetR[i], keyPoints4All[1],
+                        matches, matchImg, Scalar::all(-1), Scalar(97, 98, 255));
+            imshow("matches" + num2str(i + 1), matchImg);
+            waitKey();
+            drawMatches(rangingSetL[i], keyPoints4All[0],
+                        rangingSetR[i], keyPoints4All[1],
+                        matches, matchImg, Scalar::all(-1), Scalar::all(-1), 
+                        std::vector< char >(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
+            imshow("matches" + num2str(i + 1), matchImg);
+            waitKey();
 
-        if(lFixed && rFixed) {
-            for(int i = 0; i < allCornersL.size(); i++) {
-                cout << "图像" << i << "：" << endl;
-                // 计算E，分解出R、t
-                bool foundE = findTransform(cameraMatrixL, cameraMatrixR, R, T,
-                                            allCornersL[i], allCornersR[i], mask);
-                if(foundE) {
-                    // 去除不匹配点对
-                    maskoutPoints(allCornersL[i], mask);
-                    maskoutPoints(allCornersR[i], mask);
-                    // 重建坐标
-                    T *= baselineDist;
-                    reconstruct(cameraMatrixL, cameraMatrixR, R, T,
-                                allCornersL[i], allCornersR[i], structure);
-                    toPoints3D(structure, structure3D);
+            getMatchedPoints(keyPoints4All[0], keyPoints4All[1], matches, objectPointsL, objectPointsR);
+            getMatchedColors(colors4All[0], colors4All[1], matches, objectColorsL, objectColorsR);
 
-                    // 世界坐标（左目）深度
-                    for(int i = 0; i < structure3D.size().width; i++) {
-                        lDist = sqrt(structure3D.at<float>(0, i) * structure3D.at<float>(0, i) +
-                                     structure3D.at<float>(1, i) * structure3D.at<float>(1, i) +
-                                     structure3D.at<float>(2, i) * structure3D.at<float>(2, i));
-                        cout << "测距点深度 " << lDist / 1000 << " m" << endl;
-                    }
-                    cout << endl;
-                } else {
-                    cout << "本征矩阵求解失败" << endl << endl;
+            // 计算E，分解出R、t
+            bool foundE = findTransform(cameraMatrixL, cameraMatrixR, R, T,
+                                        objectPointsL, objectPointsR, mask);
+            if(foundE) {
+                cout << "R = " << endl << R << endl << endl;
+                cout << "t = " << endl << T << endl << endl;
+                // 去除不匹配点对
+                maskoutPoints(objectPointsL, mask);
+                maskoutPoints(objectPointsR, mask);
+                // 重建坐标
+                T *= baselineDist;
+                reconstruct(cameraMatrixL, cameraMatrixR, R, T,
+                            objectPointsL, objectPointsR, structure);
+                toPoints3D(structure, structure3D);
+                // 中位线距离
+                dist = ranging(structure3D, R, T);
+                for(auto iter = dist.cbegin(); iter < dist.cend(); ++iter) {
+                    cout << "测距点深度 " << *iter << " m" << endl;
                 }
+                cout << endl;
+            } else {
+                cout << "本征矩阵求解失败" << endl << endl;
             }
         }
     }

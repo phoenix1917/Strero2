@@ -590,3 +590,37 @@ void saveStructure(string fileName, vector<Mat>& rotations,
     fs.release();
 }
 
+
+/**
+ * ranging 计算中位线距离
+ * @param structure 点在世界坐标系下的坐标（单位：mm）
+ * @param R 旋转矩阵
+ * @param t 平移向量
+ * @return 计算出的距离（单位：m）
+ */
+vector<double> ranging(Mat structure, Mat R, Mat t) {
+    vector<double> range;
+    // 输入大小有误，返回空
+    if(structure.size().height != 3 || R.size() != Size(3, 3) || t.size() != Size(1, 3)) {
+        return range;
+    }
+    for(int i = 0; i < structure.size().width; i++) {
+        Mat pointL, pointR;
+        structure.colRange(i, i + 1).clone().convertTo(pointL, CV_64FC1);
+        pointR = R * pointL + t;
+        double distL, distR, distT, median;
+        distL = sqrt(pointL.at<double>(0) * pointL.at<double>(0) +
+                     pointL.at<double>(1) * pointL.at<double>(1) +
+                     pointL.at<double>(2) * pointL.at<double>(2));
+        distR = sqrt(pointR.at<double>(0) * pointR.at<double>(0) +
+                     pointR.at<double>(1) * pointR.at<double>(1) +
+                     pointR.at<double>(2) * pointR.at<double>(2));
+        distT = sqrt(t.at<double>(0) * t.at<double>(0) +
+                     t.at<double>(1) * t.at<double>(1) +
+                     t.at<double>(2) * t.at<double>(2));
+        median = 0.5 * sqrt(2 * distL * distL + 2 * distR * distR - distT * distT) / 1000;
+        range.push_back(median);
+    }
+    return range;
+}
+    
