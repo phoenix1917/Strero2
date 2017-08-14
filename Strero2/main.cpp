@@ -15,13 +15,13 @@ using namespace cv;
 using namespace std;
 
 // 显示角点提取结果
-bool showCornerExt = false;
+bool showCornerExt = true;
 // 进行单目标定（true通过单目标定确定内参，false输入内参）
-bool doSingleCalib = false;
+bool doSingleCalib = true;
 // 测距方式（true通过双目标定确定外参，false通过特征提取获得匹配点计算位姿）
 bool doStereoCalib = true;
 // 手动选点（用于双目标定方式，true手动选点，false选择ROI中心进行局部特征提取）
-bool manualPoints = false;
+bool manualPoints = true;
 // 基线距离（用于特征提取方式，规定以mm为单位）
 double baselineDist = 1420;
 // ROI大小（横向半径，纵向半径）
@@ -38,21 +38,21 @@ Mat roiImgL, roiImgR;
 // 使用的标定板棋盘格内角点的个数
 Size boardSize;
 // 标定板上每个方格的大小
-float squareSize; 
+float squareSize;
 
 int main() {
     // 定义所使用的标定板
     usingBoard(3, boardSize, squareSize);
     // 加载标定所用图像文件的路径
-    ifstream finL("calibdata5_L.txt");
-    ifstream finR("calibdata5_R.txt");
+    ifstream finL("20170810_calib1_L.txt");
+    ifstream finR("20170810_calib1_R.txt");
     // 加载测距所用的图像文件路径
-    ifstream finRangingL("ranging5-2_L.txt");
-    ifstream finRangingR("ranging5-2_R.txt");
+    ifstream finRangingL("20170810_ranging1_L.txt");
+    ifstream finRangingR("20170810_ranging1_R.txt");
     // 保存标定结果的文件
-    ofstream foutL("calibration_result5_L.txt");
-    ofstream foutR("calibration_result5_R.txt");
-    ofstream foutStereo("stereo_result5.txt");
+    ofstream foutL("20170810_calib_result1_L.txt");
+    ofstream foutR("20170810_calib_result1_R.txt");
+    ofstream foutStereo("20170810_stereo_result1.txt");
 
     // 每行读入的图像路径
     string fileName;
@@ -235,7 +235,7 @@ int main() {
         double reprojectionErrorL = calibrateCamera(objectPoints, allCornersL, imageSize,
                                                     cameraMatrixL, distCoeffsL, rVecsL, tVecsL,
                                                     stdDevIntrinsicsL, stdDevExtrinsicsL, perViewErrorsL,
-                                                    CV_CALIB_USE_INTRINSIC_GUESS |
+                                                    CV_CALIB_USE_INTRINSIC_GUESS +
                                                     CV_CALIB_FIX_PRINCIPAL_POINT);
         cout << "左目";
         printCalibResults(cameraMatrixL, distCoeffsL, reprojectionErrorL, stdDevIntrinsicsL);
@@ -245,7 +245,7 @@ int main() {
         double reprojectionErrorR = calibrateCamera(objectPoints, allCornersR, imageSize,
                                                     cameraMatrixR, distCoeffsR, rVecsR, tVecsR,
                                                     stdDevIntrinsicsR, stdDevExtrinsicsR, perViewErrorsR,
-                                                    CV_CALIB_USE_INTRINSIC_GUESS |
+                                                    CV_CALIB_USE_INTRINSIC_GUESS + 
                                                     CV_CALIB_FIX_PRINCIPAL_POINT);
         cout << "右目";
         printCalibResults(cameraMatrixR, distCoeffsR, reprojectionErrorR, stdDevIntrinsicsR);
@@ -314,21 +314,21 @@ int main() {
                                                    cameraMatrixL, distCoeffsL,
                                                    cameraMatrixR, distCoeffsR,
                                                    imageSize, R, T, E, F,
-                                                   CALIB_USE_INTRINSIC_GUESS |
-                                                   CALIB_FIX_PRINCIPAL_POINT,
-                                                   TermCriteria(TermCriteria::COUNT + 
-                                                                TermCriteria::EPS, 40, 1e-5));
+                                                   CALIB_USE_INTRINSIC_GUESS + 
+                                                   CALIB_FIX_PRINCIPAL_POINT);
         // 输出双目标定结果
         cout << "双目标定结果：" << endl;
         cout << "R = " << endl << R << endl;
         cout << "t = " << endl << T << endl;
         cout << "E = " << endl << E << endl;
         cout << "F = " << endl << F << endl;
+        cout << "reprojection error = " << endl << reprojErrorStereo << endl;
         cout << endl << "------------------------------------------" << endl << endl;
         foutStereo << "R = " << endl << R << endl;
         foutStereo << "t = " << endl << T << endl;
         foutStereo << "E = " << endl << E << endl;
         foutStereo << "F = " << endl << F << endl;
+        foutStereo << "reprojection error = " << endl << reprojErrorStereo << endl;
         namedWindow("Ranging_leftcam");
         namedWindow("Ranging_rightcam");
 

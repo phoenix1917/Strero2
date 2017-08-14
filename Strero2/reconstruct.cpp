@@ -359,7 +359,7 @@ bool findTransform(Mat& K1, Mat& K2, Mat& R, Mat& T,
     double focalLength = 0.5 * (K1.at<double>(0) + K1.at<double>(4) +
                                 K2.at<double>(0) + K2.at<double>(4));
     Point2d principlePoint((K1.at<double>(2) + K2.at<double>(2)) / 2,
-        (K1.at<double>(5) + K2.at<double>(5)) / 2);
+                           (K1.at<double>(5) + K2.at<double>(5)) / 2);
 
     //根据匹配点求取本征矩阵，使用RANSAC，进一步排除失配点
     Mat E = findEssentialMat(p1, p2, focalLength, principlePoint, RANSAC, 0.999, 1.0, mask);
